@@ -607,7 +607,7 @@ function App() {
           fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
           color:"#ffffff60", marginBottom:16
         }}>
-          Will it go up or down? Bet on your favorite memes.{" "}
+          Predict targets. Vote with conviction on your favorite memes.{" "}
           <span style={{ color:"#f7931a" }}>48h rounds</span>
         </div>
 
