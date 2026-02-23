@@ -206,35 +206,34 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
         </div>
 
         <div style={{
-          display:"flex", alignItems:"center", marginBottom:10,
-          background:"#0c1018", borderRadius:8, overflow:"hidden"
+          display:"flex", alignItems:"flex-end", gap:16, marginBottom:10
         }}>
-          <div style={{ flex:1, padding:"6px 10px" }}>
+          <div>
             <div style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
-              color:"#ffffff40", marginBottom:1
+              color:"#ffffff40", marginBottom:2
             }}>PRICE TO BEAT</div>
             <div style={{
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em",
               color:"#94a3b8"
             }}>{fM(m.startMc)}</div>
           </div>
-          <div style={{ width:1, height:28, background:"#ffffff15" }}/>
-          <div style={{ flex:1, padding:"6px 10px" }}>
+          <div style={{ width:1, height:24, background:"#ffffff20", marginBottom:4 }}/>
+          <div>
             <div style={{
-              display:"flex", alignItems:"center", gap:4,
+              display:"flex", alignItems:"center", gap:6,
               fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
-              color:"#ffffff40", marginBottom:1
+              color:"#ffffff40", marginBottom:2
             }}>
               <span>CURRENT PRICE</span>
               <span style={{
                 color: isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40"
               }}>
-                {isUp ? "▲" : pctChange < 0 ? "▼" : ""}{fM(Math.abs(m.mc - m.startMc))}
+                {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {fM(Math.abs(m.mc - m.startMc))}
               </span>
             </div>
             <div style={{
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em",
               ...gld
             }}>{fM(m.mc)}</div>
           </div>
