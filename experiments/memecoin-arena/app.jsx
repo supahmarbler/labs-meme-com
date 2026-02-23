@@ -197,11 +197,11 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
               textTransform:"uppercase",
               textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
               lineHeight:1.2
-            }}>WILL ${m.c.sym} GO UP?</div>
+            }}>${m.c.sym} Up or Down</div>
             <div style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
               color:"#ffffff35", marginTop:2
-            }}>48h prediction · above start to win</div>
+            }}>48h prediction</div>
           </div>
         </div>
 
@@ -269,11 +269,11 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
             <div style={{ display:"flex", gap:10 }}>
               <button style={{ ...bx, background:"#71baff8a" }}
                 onClick={() => { setSide("YES"); setStep("amt"); }}>
-                YES
+                UP ↑
               </button>
               <button style={{ ...bx, background:"#234bc29e", border:"2px solid #c8dbff52" }}
                 onClick={() => { setSide("NO"); setStep("amt"); }}>
-                NO
+                DOWN ↓
               </button>
             </div>
           )}
@@ -324,7 +324,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
                   style={{ ...bx, flex:"1 1 auto", background:side==="YES"?"#71baff8a":"#234bc29e" }}
                   onClick={doBuy}
                   disabled={!amt || parseInt(amt)<=0 || parseInt(amt)>bal}>
-                  BET {side} {amt ? "("+parseInt(amt).toLocaleString()+")" : ""}
+                  BET {side==="YES"?"UP ↑":"DOWN ↓"} {amt ? "("+parseInt(amt).toLocaleString()+")" : ""}
                 </button>
               </div>
             </div>
@@ -337,7 +337,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
                 <span style={{
                   fontFamily:"'Londrina Solid',sans-serif",
                   color: pos.side==="YES" ? "#71baff" : "#4023c3"
-                }}>{pos.side}</span>
+                }}>{pos.side==="YES"?"UP ↑":"DOWN ↓"}</span>
                 {" "} {Math.round(pos.sh)} SHARES{" "}
                 <span style={{ color: pnl>=0 ? "#b6ffac" : "#f65e5e" }}>
                   {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
@@ -659,7 +659,7 @@ function App() {
                     <div style={{
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
                       color:"#ffffff50"
-                    }}>{yP(m.qY,m.qN,m.b)}% bullish</div>
+                    }}>{yP(m.qY,m.qN,m.b)}% say UP</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
                     <div style={{
