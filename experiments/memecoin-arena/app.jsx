@@ -1,17 +1,53 @@
 const { useState, useEffect, useCallback } = React;
 
+// meme.com API
+const API_BASE = "https://api.v2.meme.com";
+const COIN_SYMBOLS = ["joe", "stnk", "pengu", "pepe", "mog"];
+const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pengu:"#38BDF8", pepe:"#4ADE80", mog:"#9333EA", doge:"#c2a633" };
+
+async function fetchCoins() {
+  try {
+    const res = await fetch(`${API_BASE}/farm/coins_leaderboard?page=1&page_size=100`);
+    const data = await res.json();
+    return data.items.filter(c => COIN_SYMBOLS.includes(c.symbol.toLowerCase())).map(c => ({
+      sym: c.symbol.toUpperCase(),
+      name: c.name,
+      mcap: c.market_capitalization,
+      price: c.price_now,
+      color: COIN_COLORS[c.symbol.toLowerCase()] || "#71BAFF",
+      img: c.coin_image_url,
+      mul: 1.05,
+      id: c.id,
+      key: c.key
+    }));
+  } catch (err) {
+    console.error("Failed to fetch coins:", err);
+    return [];
+  }
+}
+
+async function fetchPrices(coins) {
+  try {
+    const res = await fetch(`${API_BASE}/farm/coins_leaderboard?page=1&page_size=100`);
+    const data = await res.json();
+    const priceMap = {};
+    data.items.forEach(c => {
+      priceMap[c.symbol.toLowerCase()] = {
+        price: c.price_now,
+        mcap: c.market_capitalization
+      };
+    });
+    return priceMap;
+  } catch (err) {
+    console.error("Failed to fetch prices:", err);
+    return {};
+  }
+}
+
 const lC = (a,b,B) => { const x=a/B,y=b/B,m=Math.max(x,y); return B*(m+Math.log(Math.exp(x-m)+Math.exp(y-m))); };
 const yP = (a,b,B) => { if(!B)return 50; const m=Math.max(a/B,b/B),eA=Math.exp(a/B-m),eB=Math.exp(b/B-m); return Math.min(100,Math.max(0,Math.round(eA/(eA+eB)*100))); };
 const sF = (a,b,B,c,s) => { const A=s==="YES"?Math.exp(a/B):Math.exp(b/B),X=s==="YES"?Math.exp(b/B):Math.exp(a/B),p=(Math.exp(c/B)*(A+X)-X)/A; return p>0?B*Math.log(p):0; };
 const rF = (a,b,B,sh,s) => { if(sh<=0)return 0; return Math.max(0,Math.round(lC(a,b,B)-(s==="YES"?lC(Math.max(0,a-sh),b,B):lC(a,Math.max(0,b-sh),B)))); };
-
-const COINS = [
-  { sym:"JOE", mcap:7.1e6, color:"#f7931a", mul:1.05, img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
-  { sym:"STNK", mcap:6.5e6, color:"#84CC16", mul:1.05, img:"https://cdn.meme.com/images/meme_assets/2025-10-24/17613344323935piQ.png" },
-  { sym:"DOGE", mcap:16.4e9, color:"#c2a633", mul:1.05, img:"https://cdn.meme.com/images/meme_assets/2024-04-10/1712777399153FJCg.png" },
-  { sym:"PENGU", mcap:422e6, color:"#38BDF8", mul:1.05, img:"https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
-  { sym:"PEPE", mcap:1.73e9, color:"#4ADE80", mul:1.05, img:"https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png" },
-];
 
 const fM = v => v>=1e12?"$"+(v/1e12).toFixed(2)+"T":v>=1e9?"$"+(v/1e9).toFixed(2)+"B":v>=1e6?"$"+(v/1e6).toFixed(1)+"M":"$"+(v/1e3).toFixed(0)+"K";
 const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor((s%3600)/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
@@ -23,8 +59,8 @@ const MUL_MIN = 1.02, MUL_MAX = 1.15;
 const mk = (c, r, mul) => {
   const m = mul || c.mul;
   return {
-    id:c.sym+"-"+(r||1), c:{...c, mul:m}, rn:r||1, tgt:c.mcap*m, mc:c.mcap,
-    qY:0, qN:0, b:c.sym==="DOGE"?1000:c.sym==="PEPE"?800:500,
+    id:c.sym+"-"+(r||1), c:{...c, mul:m}, rn:r||1, tgt:c.mcap*m, mc:c.mcap, startMc:c.mcap,
+    qY:0, qN:0, b:c.mcap > 1e9 ? 1000 : c.mcap > 100e6 ? 800 : 500,
     st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:0, ppl:0
   };
 };
@@ -53,7 +89,6 @@ const CoinImg = ({ src, color, size, sym }) => {
   );
 };
 
-// Conviction: early bets get bonus shares (first 25% of round = 1.5x, first 50% = 1.2x)
 const convBonus = (m) => {
   const elapsed = (Date.now() - (m.ea - DUR*1000)) / (DUR*1000);
   if (elapsed < 0.25) return { mul:1.5, label:"EARLY BIRD 1.5x", color:"#f7931a" };
@@ -61,7 +96,6 @@ const convBonus = (m) => {
   return { mul:1, label:null, color:null };
 };
 
-// Streak multiplier: 3 wins = 1.5x, 5 = 2x, 10 = 3x
 const streakMul = (s) => s >= 10 ? 3 : s >= 5 ? 2 : s >= 3 ? 1.5 : 1;
 const streakLabel = (s) => s >= 10 ? "ON FIRE 3x" : s >= 5 ? "HOT STREAK 2x" : s >= 3 ? "STREAK 1.5x" : null;
 
@@ -85,7 +119,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
 
   const yp = yP(m.qY, m.qN, m.b);
   const np = 100-yp;
-  const prog = m.tgt > m.c.mcap ? Math.min(100, Math.max(0, (m.mc - m.c.mcap) / (m.tgt - m.c.mcap) * 100)) : 0;
+  const prog = m.tgt > m.startMc ? Math.min(100, Math.max(0, (m.mc - m.startMc) / (m.tgt - m.startMc) * 100)) : 0;
   const rf = pos ? rF(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const pnl = pos ? rf - pos.inv : 0;
   const conv = convBonus(m);
@@ -151,7 +185,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
         }}>
           <div style={{
             height:"100%", borderRadius:999, transition:"width 1s",
-            width:prog+"%",
+            width:Math.max(0, prog)+"%",
             background: prog>=100
               ? "linear-gradient(90deg,#b6ffac,#53ac52)"
               : "linear-gradient(90deg,#71BAFF,"+m.c.color+")"
@@ -332,21 +366,47 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
 };
 
 function App() {
-  const [mks, setMks] = useState(() => COINS.map(c => mk(c,1)));
+  const [mks, setMks] = useState([]);
   const [pos, setPos] = useState({});
   const [bal, setBal] = useState(10000);
   const [hist, setHist] = useState([]);
-  const [hitLog, setHitLog] = useState({}); // {sym: [true,false,true,...]}
+  const [hitLog, setHitLog] = useState({});
   const [streak, setStreak] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(null);
   const [, tick] = useState(0);
 
-  // mcap drift (exaggerated for demo — production uses real prices)
+  // Load coins from API on mount
   useEffect(() => {
-    const i = setInterval(() => setMks(p => p.map(m =>
-      m.st!=="OPEN" ? m : { ...m, mc: m.mc*(1+(Math.random()-.47)*.012) }
-    )), 2000);
-    return () => clearInterval(i);
+    fetchCoins().then(coins => {
+      if (coins.length > 0) {
+        setMks(coins.map(c => mk(c, 1)));
+      }
+      setLoading(false);
+    });
   }, []);
+
+  // Real price feed from meme.com API (every 30 seconds)
+  useEffect(() => {
+    if (mks.length === 0) return;
+
+    const updatePrices = async () => {
+      const prices = await fetchPrices(mks.map(m => m.c));
+      setMks(p => p.map(m => {
+        if (m.st !== "OPEN") return m;
+        const data = prices[m.c.sym.toLowerCase()];
+        if (data) {
+          return { ...m, mc: data.mcap };
+        }
+        return m;
+      }));
+      setLastUpdate(new Date());
+    };
+
+    updatePrices();
+    const i = setInterval(updatePrices, 30000);
+    return () => clearInterval(i);
+  }, [mks.length]);
 
   // resolve: touch model - YES instantly when target hit, NO at expiry
   useEffect(() => {
@@ -370,7 +430,6 @@ function App() {
       const u = p.map(m => {
         if (m.st!=="RES") return m;
         if (!m._r) {
-          // Log the result for difficulty adjustment
           setHitLog(prev => {
             const log = prev[m.c.sym] || [];
             return { ...prev, [m.c.sym]: [...log.slice(-6), m.res==="YES"] };
@@ -378,7 +437,6 @@ function App() {
           return { ...m, _r:Date.now() };
         }
         if (Date.now()-m._r < 10000) return m;
-        // Adjust multiplier based on recent hit rate
         const log = hitLog[m.c.sym] || [];
         const hits = log.filter(Boolean).length;
         const total = log.length;
@@ -454,6 +512,18 @@ function App() {
 
   const ranked = [...mks].sort((a,b) => b.vol-a.vol);
 
+  if (loading) {
+    return (
+      <div style={{
+        minHeight:"100vh", background:"#0c1018", color:"#fff",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontFamily:"'Jersey 25',sans-serif", fontSize:"1.5em"
+      }}>
+        Loading markets...
+      </div>
+    );
+  }
+
   return (
     <div style={{
       minHeight:"100vh", background:"#0c1018", color:"#fff",
@@ -473,6 +543,9 @@ function App() {
           }}>MEME.COM</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          {lastUpdate && <span style={{
+            fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff40"
+          }}>LIVE</span>}
           {streak >= 3 && <div style={{
             display:"flex", alignItems:"center", gap:4,
             background:"#f65e5e22", padding:"6px 12px", borderRadius:16,
@@ -504,7 +577,7 @@ function App() {
           color:"#ffffff60", marginBottom:16
         }}>
           Predict targets. Vote with conviction on your favorite memes.{" "}
-          <span style={{ color:"#f7931a" }}>48h rounds.</span>
+          <span style={{ color:"#f7931a" }}>48h rounds · Live prices from meme.com</span>
         </div>
 
         <div style={{
@@ -570,7 +643,6 @@ function App() {
               ))}
             </div>
 
-            {/* Player Leaderboard */}
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
               borderRadius:25, overflow:"hidden"
