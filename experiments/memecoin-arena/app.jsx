@@ -86,7 +86,7 @@ const sellShares = (qY, qN, B, shares, side) => {
 
 const fM = v => v>=1e12?"$"+(v/1e12).toFixed(2)+"T":v>=1e9?"$"+(v/1e9).toFixed(2)+"B":v>=1e6?"$"+(v/1e6).toFixed(1)+"M":"$"+(v/1e3).toFixed(0)+"K";
 const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor((s%3600)/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
-const DUR = 172800;
+const DUR = 86400;
 const gld = { background:"linear-gradient(193deg,#f7931a -49%,#fab248 -14%,#fff1a6 58%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" };
 
 const mk = (c, r) => {
@@ -197,7 +197,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
             <div style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
               color:"#ffffff35", marginTop:2
-            }}>48h prediction</div>
+            }}>24h prediction</div>
           </div>
         </div>
 
@@ -606,7 +606,7 @@ function App() {
           color:"#ffffff60", marginBottom:16
         }}>
           Predict targets. Vote with conviction on your favorite memes.{" "}
-          <span style={{ color:"#f7931a" }}>48h rounds</span>
+          <span style={{ color:"#f7931a" }}>24h rounds</span>
         </div>
 
         <div style={{
