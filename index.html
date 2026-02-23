@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>meme.com labs</title>
+  <link href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@400;900&family=Jersey+25&family=Mulish:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0c1018; color:#fff; font-family:'Mulish',sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .logo { font-family:'Londrina Solid',sans-serif; font-size:3em; text-transform:uppercase; margin-bottom:4px; }
+    .sub { font-family:'Jersey 25',sans-serif; color:#71BAFF; font-size:1.2em; margin-bottom:48px; }
+    .experiments { display:flex; flex-direction:column; gap:16px; width:100%; max-width:400px; padding:0 24px; }
+    .exp { display:flex; align-items:center; gap:16px; padding:16px 20px; background:linear-gradient(360deg,#212936,#4e596c); border-radius:16px; text-decoration:none; color:#fff; transition:transform .15s; }
+    .exp:hover { transform:translateY(-2px); }
+    .exp-icon { width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg,#f7931a44,#f7931a11); border:1px solid #f7931a66; display:flex; align-items:center; justify-content:center; font-size:1.5em; flex-shrink:0; }
+    .exp-info h3 { font-family:'Londrina Solid',sans-serif; font-size:1.1em; text-transform:uppercase; }
+    .exp-info p { font-family:'Jersey 25',sans-serif; font-size:.8em; color:#ffffff60; }
+    .badge { font-family:'Jersey 25',sans-serif; font-size:.65em; background:#71BAFF22; color:#71BAFF; padding:2px 8px; border-radius:8px; border:1px solid #71BAFF44; margin-left:8px; }
+  </style>
+</head>
+<body>
+  <div class="logo">MEME.COM</div>
+  <div class="sub">labs</div>
+  <div class="experiments">
+    <a href="./experiments/memecoin-arena/" class="exp">
+      <div class="exp-icon">🏟️</div>
+      <div class="exp-info">
+        <h3>Memecoin Arena <span class="badge">NEW</span></h3>
+        <p>Predictions V2 - Touch model, conviction betting, streaks</p>
+      </div>
+    </a>
+  </div>
+</body>
+</html>
