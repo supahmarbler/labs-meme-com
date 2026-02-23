@@ -269,11 +269,11 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
             <div style={{ display:"flex", gap:10 }}>
               <button style={{ ...bx, background:"#71baff8a" }}
                 onClick={() => { setSide("YES"); setStep("amt"); }}>
-                UP ↑
+                UP
               </button>
               <button style={{ ...bx, background:"#234bc29e", border:"2px solid #c8dbff52" }}
                 onClick={() => { setSide("NO"); setStep("amt"); }}>
-                DOWN ↓
+                DOWN
               </button>
             </div>
           )}
@@ -324,7 +324,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
                   style={{ ...bx, flex:"1 1 auto", background:side==="YES"?"#71baff8a":"#234bc29e" }}
                   onClick={doBuy}
                   disabled={!amt || parseInt(amt)<=0 || parseInt(amt)>bal}>
-                  BET {side==="YES"?"UP ↑":"DOWN ↓"} {amt ? "("+parseInt(amt).toLocaleString()+")" : ""}
+                  BET {side==="YES"?"UP":"DOWN"} {amt ? "("+parseInt(amt).toLocaleString()+")" : ""}
                 </button>
               </div>
             </div>
@@ -337,7 +337,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
                 <span style={{
                   fontFamily:"'Londrina Solid',sans-serif",
                   color: pos.side==="YES" ? "#71baff" : "#4023c3"
-                }}>{pos.side==="YES"?"UP ↑":"DOWN ↓"}</span>
+                }}>{pos.side==="YES"?"UP":"DOWN"}</span>
                 {" "} {Math.round(pos.sh)} SHARES{" "}
                 <span style={{ color: pnl>=0 ? "#b6ffac" : "#f65e5e" }}>
                   {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
