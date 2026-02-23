@@ -528,7 +528,7 @@ function App() {
   return (
     <div style={{
       minHeight:"100vh", background:"#0c1018", color:"#fff",
-      fontFamily:"'Mulish',sans-serif"
+      fontFamily:"'Mulish',sans-serif", zoom:"125%"
     }}>
       <link href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@400;900&family=Jersey+25&family=Mulish:wght@400;700&display=swap" rel="stylesheet"/>
 
