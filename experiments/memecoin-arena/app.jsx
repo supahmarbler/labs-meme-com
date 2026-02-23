@@ -206,35 +206,39 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
         </div>
 
         <div style={{
-          display:"flex", justifyContent:"space-between", alignItems:"center",
-          fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
-          color:"#ffffff40", marginBottom:4
+          display:"flex", alignItems:"stretch", marginBottom:12,
+          background:"#0c1018", borderRadius:10, overflow:"hidden"
         }}>
-          <span>START: {fM(m.startMc)}</span>
-          <span style={{
-            fontSize:"1.4em",
-            color: isUp ? "#b6ffac" : pctChange < 0 ? "#f65e5e" : "#ffffff60",
-            fontFamily:"'Londrina Solid',sans-serif"
-          }}>{isUp ? "+" : ""}{pctChange.toFixed(2)}%</span>
-          <span>NOW: {fM(m.mc)}</span>
-        </div>
-        <div style={{
-          height:4, background:"#0c1018", borderRadius:999,
-          overflow:"hidden", marginBottom:10, position:"relative"
-        }}>
-          <div style={{
-            position:"absolute", left:"50%", top:0, bottom:0,
-            width:1, background:"#ffffff30"
-          }}/>
-          <div style={{
-            position:"absolute",
-            left: isUp ? "50%" : Math.max(0, 50 + pctChange * 5) + "%",
-            width: isUp ? Math.min(50, pctChange * 5) + "%" : (50 - Math.max(0, 50 + pctChange * 5)) + "%",
-            height:"100%", borderRadius:999, transition:"all 1s",
-            background: isUp
-              ? "linear-gradient(90deg,#71BAFF,#b6ffac)"
-              : "linear-gradient(90deg,#f65e5e,#71BAFF)"
-          }}/>
+          <div style={{ flex:1, padding:"10px 14px" }}>
+            <div style={{
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".55em",
+              color:"#ffffff50", marginBottom:4, letterSpacing:".05em"
+            }}>PRICE TO BEAT</div>
+            <div style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
+              color:"#94a3b8"
+            }}>{fM(m.startMc)}</div>
+          </div>
+          <div style={{ width:1, background:"#ffffff15" }}/>
+          <div style={{ flex:1, padding:"10px 14px" }}>
+            <div style={{
+              display:"flex", alignItems:"center", gap:6,
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".55em",
+              color:"#ffffff50", marginBottom:4, letterSpacing:".05em"
+            }}>
+              <span>CURRENT PRICE</span>
+              <span style={{
+                color: isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff50",
+                display:"flex", alignItems:"center", gap:2
+              }}>
+                {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {fM(Math.abs(m.mc - m.startMc))}
+              </span>
+            </div>
+            <div style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
+              ...gld
+            }}>{fM(m.mc)}</div>
+          </div>
         </div>
 
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
