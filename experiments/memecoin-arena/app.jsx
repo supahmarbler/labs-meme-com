@@ -471,10 +471,6 @@ function App() {
             fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.5em",
             textTransform:"uppercase"
           }}>MEME.COM</span>
-          <span style={{
-            fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
-            color:"#71BAFF", marginLeft:8
-          }}>Predictions V2</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           {streak >= 3 && <div style={{
