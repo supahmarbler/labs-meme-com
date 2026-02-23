@@ -78,7 +78,7 @@ const CoinImg = ({ src, color, size, sym }) => {
       fontSize:s*.45, color:"#fff", fontWeight:900,
       textShadow:"0 1px 3px rgba(0,0,0,.4)"
     }}>
-      <img src={src} alt="" crossOrigin="anonymous" referrerPolicy="no-referrer"
+      <img src={src} alt=""
         style={{
           position:"absolute", inset:0,
           width:"100%", height:"100%", objectFit:"cover", borderRadius:11
