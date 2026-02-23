@@ -16,7 +16,6 @@ async function fetchCoins() {
       price: c.price_now,
       color: COIN_COLORS[c.symbol.toLowerCase()] || "#71BAFF",
       img: c.coin_image_url,
-      mul: 1.05,
       id: c.id,
       key: c.key
     }));
@@ -90,12 +89,9 @@ const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+"
 const DUR = 172800;
 const gld = { background:"linear-gradient(193deg,#f7931a -49%,#fab248 -14%,#fff1a6 58%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" };
 
-const MUL_MIN = 1.02, MUL_MAX = 1.15;
-
-const mk = (c, r, mul) => {
-  const m = mul || c.mul;
+const mk = (c, r) => {
   return {
-    id:c.sym+"-"+(r||1), c:{...c, mul:m}, rn:r||1, tgt:c.mcap*m, mc:c.mcap, startMc:c.mcap,
+    id:c.sym+"-"+(r||1), c, rn:r||1, mc:c.mcap, startMc:c.mcap,
     qY:0, qN:0, b:c.mcap > 1e9 ? 1000 : c.mcap > 100e6 ? 800 : 500,
     st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:0, ppl:0
   };
@@ -156,7 +152,8 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
 
   const yp = yP(m.qY, m.qN, m.b);
   const np = 100-yp;
-  const prog = m.tgt > m.startMc ? Math.min(100, Math.max(0, (m.mc - m.startMc) / (m.tgt - m.startMc) * 100)) : 0;
+  const pctChange = m.startMc > 0 ? ((m.mc - m.startMc) / m.startMc * 100) : 0;
+  const isUp = pctChange > 0;
   const rf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const pnl = pos ? rf - pos.inv : 0;
   const conv = convBonus(m);
@@ -200,32 +197,43 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
               textTransform:"uppercase",
               textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
               lineHeight:1.2
-            }}>WILL ${m.c.sym} HIT {fM(m.tgt)}?</div>
+            }}>WILL ${m.c.sym} GO UP?</div>
             <div style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
               color:"#ffffff35", marginTop:2
-            }}>+{((m.c.mul-1)*100).toFixed(1)}% target · touch to win</div>
+            }}>48h prediction · above start to win</div>
           </div>
         </div>
 
         <div style={{
-          display:"flex", justifyContent:"space-between",
+          display:"flex", justifyContent:"space-between", alignItems:"center",
           fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
           color:"#ffffff40", marginBottom:4
         }}>
+          <span>START: {fM(m.startMc)}</span>
+          <span style={{
+            fontSize:"1.4em",
+            color: isUp ? "#b6ffac" : pctChange < 0 ? "#f65e5e" : "#ffffff60",
+            fontFamily:"'Londrina Solid',sans-serif"
+          }}>{isUp ? "+" : ""}{pctChange.toFixed(2)}%</span>
           <span>NOW: {fM(m.mc)}</span>
-          <span>TARGET: {fM(m.tgt)}</span>
         </div>
         <div style={{
           height:4, background:"#0c1018", borderRadius:999,
-          overflow:"hidden", marginBottom:10
+          overflow:"hidden", marginBottom:10, position:"relative"
         }}>
           <div style={{
-            height:"100%", borderRadius:999, transition:"width 1s",
-            width:Math.max(0, prog)+"%",
-            background: prog>=100
-              ? "linear-gradient(90deg,#b6ffac,#53ac52)"
-              : "linear-gradient(90deg,#71BAFF,"+m.c.color+")"
+            position:"absolute", left:"50%", top:0, bottom:0,
+            width:1, background:"#ffffff30"
+          }}/>
+          <div style={{
+            position:"absolute",
+            left: isUp ? "50%" : Math.max(0, 50 + pctChange * 5) + "%",
+            width: isUp ? Math.min(50, pctChange * 5) + "%" : (50 - Math.max(0, 50 + pctChange * 5)) + "%",
+            height:"100%", borderRadius:999, transition:"all 1s",
+            background: isUp
+              ? "linear-gradient(90deg,#71BAFF,#b6ffac)"
+              : "linear-gradient(90deg,#f65e5e,#71BAFF)"
           }}/>
         </div>
 
@@ -352,9 +360,10 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <div style={{
                 fontFamily:"'Jersey 25',sans-serif", padding:"12px 16px",
-                background:"#242a35", borderRadius:8, textAlign:"center"
+                background:"#242a35", borderRadius:8, textAlign:"center",
+                color: m.res==="YES" ? "#b6ffac" : "#f65e5e"
               }}>
-                {m.res==="YES" ? "TARGET HIT!" : "SURVIVED 48H — NO WINS"}
+                {m.res==="YES" ? "WENT UP! ↑" : "WENT DOWN ↓"}
               </div>
               {pos && !pos.claimed && (
                 <div>
@@ -407,7 +416,6 @@ function App() {
   const [pos, setPos] = useState({});
   const [bal, setBal] = useState(10000);
   const [hist, setHist] = useState([]);
-  const [hitLog, setHitLog] = useState({});
   const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -445,14 +453,13 @@ function App() {
     return () => clearInterval(i);
   }, [mks.length]);
 
-  // resolve: touch model - YES instantly when target hit, NO at expiry
+  // resolve: UP/DOWN model - resolves at expiry only
   useEffect(() => {
     const i = setInterval(() => {
       const n = Date.now();
       setMks(p => p.map(m => {
         if (m.st!=="OPEN") return m;
-        if (m.mc >= m.tgt) return { ...m, st:"RES", res:"YES" };
-        if (n >= m.ea) return { ...m, st:"RES", res:"NO" };
+        if (n >= m.ea) return { ...m, st:"RES", res: m.mc > m.startMc ? "YES" : "NO" };
         return m;
       }));
       tick(t => t+1);
@@ -460,31 +467,18 @@ function App() {
     return () => clearInterval(i);
   }, []);
 
-  // auto-renew with dynamic difficulty
+  // auto-renew markets after resolution
   useEffect(() => {
     const i = setInterval(() => setMks(p => {
       const ids = [];
       const u = p.map(m => {
         if (m.st!=="RES") return m;
         if (!m._r) {
-          setHitLog(prev => {
-            const log = prev[m.c.sym] || [];
-            return { ...prev, [m.c.sym]: [...log.slice(-6), m.res==="YES"] };
-          });
           return { ...m, _r:Date.now() };
         }
         if (Date.now()-m._r < 10000) return m;
-        const log = hitLog[m.c.sym] || [];
-        const hits = log.filter(Boolean).length;
-        const total = log.length;
-        let newMul = m.c.mul;
-        if (total >= 3) {
-          const rate = hits / total;
-          if (rate > 0.6) newMul = Math.min(MUL_MAX, newMul * 1.02);
-          else if (rate < 0.4) newMul = Math.max(MUL_MIN, newMul * 0.98);
-        }
         ids.push(m.id);
-        return mk({ ...m.c, mcap:m.mc, mul:newMul }, m.rn+1, newMul);
+        return mk({ ...m.c, mcap:m.mc }, m.rn+1);
       });
       if (ids.length) setPos(pp => {
         const n = { ...pp };
@@ -494,7 +488,7 @@ function App() {
       return u;
     }), 2000);
     return () => clearInterval(i);
-  }, [hitLog]);
+  }, []);
 
   const onBuy = useCallback((mid, side, amt, convMul) => {
     const bonus = convMul || 1;
@@ -613,7 +607,7 @@ function App() {
           fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
           color:"#ffffff60", marginBottom:16
         }}>
-          Predict targets. Vote with conviction on your favorite memes.{" "}
+          Will it go up or down? Bet on your favorite memes.{" "}
           <span style={{ color:"#f7931a" }}>48h rounds</span>
         </div>
 
