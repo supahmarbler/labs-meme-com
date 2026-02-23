@@ -578,7 +578,7 @@ function App() {
           color:"#ffffff60", marginBottom:16
         }}>
           Predict targets. Vote with conviction on your favorite memes.{" "}
-          <span style={{ color:"#f7931a" }}>48h rounds · Live prices from meme.com</span>
+          <span style={{ color:"#f7931a" }}>48h rounds</span>
         </div>
 
         <div style={{
