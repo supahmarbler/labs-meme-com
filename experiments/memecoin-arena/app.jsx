@@ -189,10 +189,6 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
           <CoinImg src={m.c.img} color={m.c.color} size={40} sym={m.c.sym}/>
           <div>
             <div style={{
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".7em",
-              color:"#ffffff50", textTransform:"uppercase", letterSpacing:".1em"
-            }}>${m.c.sym}</div>
-            <div style={{
               fontFamily:"'Londrina Solid',sans-serif", fontSize:".875em",
               textTransform:"uppercase",
               textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
