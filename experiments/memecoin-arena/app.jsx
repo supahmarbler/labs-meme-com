@@ -44,10 +44,46 @@ async function fetchPrices(coins) {
   }
 }
 
-const lC = (a,b,B) => { const x=a/B,y=b/B,m=Math.max(x,y); return B*(m+Math.log(Math.exp(x-m)+Math.exp(y-m))); };
-const yP = (a,b,B) => { if(!B)return 50; const m=Math.max(a/B,b/B),eA=Math.exp(a/B-m),eB=Math.exp(b/B-m); return Math.min(100,Math.max(0,Math.round(eA/(eA+eB)*100))); };
-const sF = (a,b,B,c,s) => { const A=s==="YES"?Math.exp(a/B):Math.exp(b/B),X=s==="YES"?Math.exp(b/B):Math.exp(a/B),p=(Math.exp(c/B)*(A+X)-X)/A; return p>0?B*Math.log(p):0; };
-const rF = (a,b,B,sh,s) => { if(sh<=0)return 0; return Math.max(0,Math.round(lC(a,b,B)-(s==="YES"?lC(Math.max(0,a-sh),b,B):lC(a,Math.max(0,b-sh),B)))); };
+// LMSR (Logarithmic Market Scoring Rule) - proper implementation
+// Cost function: C(qY, qN) = B * ln(exp(qY/B) + exp(qN/B))
+const costFn = (qY, qN, B) => {
+  const m = Math.max(qY, qN) / B;
+  return B * (m + Math.log(Math.exp(qY/B - m) + Math.exp(qN/B - m)));
+};
+
+// Probability of YES
+const yP = (qY, qN, B) => {
+  if (!B) return 50;
+  const m = Math.max(qY, qN) / B;
+  const eY = Math.exp(qY/B - m), eN = Math.exp(qN/B - m);
+  return Math.min(99, Math.max(1, Math.round(eY / (eY + eN) * 100)));
+};
+
+// Buy shares: cost -> shares (using binary search for numerical stability)
+const buyShares = (qY, qN, B, cost, side) => {
+  if (cost <= 0) return 0;
+  const oldCost = costFn(qY, qN, B);
+  let lo = 0, hi = cost * 2;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    const newQY = side === "YES" ? qY + mid : qY;
+    const newQN = side === "NO" ? qN + mid : qN;
+    const newCost = costFn(newQY, newQN, B);
+    if (newCost - oldCost < cost) lo = mid;
+    else hi = mid;
+  }
+  return Math.round((lo + hi) / 2);
+};
+
+// Sell shares: shares -> refund
+const sellShares = (qY, qN, B, shares, side) => {
+  if (shares <= 0) return 0;
+  const oldCost = costFn(qY, qN, B);
+  const newQY = side === "YES" ? Math.max(0, qY - shares) : qY;
+  const newQN = side === "NO" ? Math.max(0, qN - shares) : qN;
+  const newCost = costFn(newQY, newQN, B);
+  return Math.max(0, Math.round(oldCost - newCost));
+};
 
 const fM = v => v>=1e12?"$"+(v/1e12).toFixed(2)+"T":v>=1e9?"$"+(v/1e9).toFixed(2)+"B":v>=1e6?"$"+(v/1e6).toFixed(1)+"M":"$"+(v/1e3).toFixed(0)+"K";
 const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor((s%3600)/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
@@ -121,7 +157,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
   const yp = yP(m.qY, m.qN, m.b);
   const np = 100-yp;
   const prog = m.tgt > m.startMc ? Math.min(100, Math.max(0, (m.mc - m.startMc) / (m.tgt - m.startMc) * 100)) : 0;
-  const rf = pos ? rF(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
+  const rf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const pnl = pos ? rf - pos.inv : 0;
   const conv = convBonus(m);
   const sm = streakMul(streak);
@@ -464,7 +500,7 @@ function App() {
     const bonus = convMul || 1;
     setMks(p => p.map(m => {
       if (m.id!==mid || m.st!=="OPEN") return m;
-      const sh = sF(m.qY, m.qN, m.b, amt, side) * bonus;
+      const sh = buyShares(m.qY, m.qN, m.b, amt, side) * bonus;
       return {
         ...m,
         qY: side==="YES" ? m.qY+sh : m.qY,
@@ -475,7 +511,7 @@ function App() {
     }));
     setPos(p => {
       const m = mks.find(x => x.id===mid);
-      const sh = sF(m.qY, m.qN, m.b, amt, side) * bonus;
+      const sh = buyShares(m.qY, m.qN, m.b, amt, side) * bonus;
       const e = p[mid];
       if (e && e.side===side) return { ...p, [mid]:{ ...e, sh:e.sh+sh, inv:e.inv+amt }};
       return { ...p, [mid]:{ side, sh, inv:amt, claimed:false }};
@@ -487,7 +523,7 @@ function App() {
     const pp = pos[mid];
     const m = mks.find(x => x.id===mid);
     if (!pp || !m) return;
-    const rf = rF(m.qY, m.qN, m.b, pp.sh, pp.side);
+    const rf = sellShares(m.qY, m.qN, m.b, pp.sh, pp.side);
     setMks(p => p.map(x => x.id!==mid ? x : {
       ...x,
       qY: pp.side==="YES" ? Math.max(0,x.qY-pp.sh) : x.qY,
