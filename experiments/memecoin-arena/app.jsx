@@ -58,6 +58,7 @@ const saveState = (state) => {
 const syncMarketToDb = async (m) => {
   if (!supabase) return;
   try {
+    // Store user trades only (subtract base liquidity)
     await supabase.from("labs_markets").upsert({
       id: m.id,
       coin_symbol: m.c.sym,
@@ -66,8 +67,8 @@ const syncMarketToDb = async (m) => {
       coin_color: m.c.color,
       start_mc: m.startMc,
       current_mc: m.mc,
-      q_yes: m.qY,
-      q_no: m.qN,
+      q_yes: Math.max(0, m.qY - BASE_LIQ),
+      q_no: Math.max(0, m.qN - BASE_LIQ),
       b: m.b,
       status: m.st,
       result: m.res,
@@ -93,27 +94,32 @@ const loadMarketsFromDb = async () => {
   }
 };
 
-const dbMarketToLocal = (db, coinData) => ({
-  id: db.id,
-  c: {
-    sym: db.coin_symbol,
-    name: db.coin_name,
-    img: coinData?.img || db.coin_image,
-    color: coinData?.color || db.coin_color,
-    mcap: Number(db.current_mc)
-  },
-  rn: parseInt(db.id.split("-")[1]) || 1,
-  mc: Number(db.current_mc),
-  startMc: Number(db.start_mc),
-  qY: Number(db.q_yes),
-  qN: Number(db.q_no),
-  b: Number(db.b),
-  st: db.status,
-  res: db.result,
-  vol: db.volume || 0,
-  ppl: db.players || 0,
-  ea: new Date(db.expires_at).getTime()
-});
+const BASE_LIQ = INITIAL_LIQUIDITY / 2; // Base liquidity for each side
+
+const dbMarketToLocal = (db, coinData) => {
+  // DB stores user trades only; we add base liquidity locally for LMSR math
+  return {
+    id: db.id,
+    c: {
+      sym: db.coin_symbol,
+      name: db.coin_name,
+      img: coinData?.img || db.coin_image,
+      color: coinData?.color || db.coin_color,
+      mcap: Number(db.current_mc)
+    },
+    rn: parseInt(db.id.split("-")[1]) || 1,
+    mc: Number(db.current_mc),
+    startMc: Number(db.start_mc),
+    qY: Number(db.q_yes) + BASE_LIQ,
+    qN: Number(db.q_no) + BASE_LIQ,
+    b: Number(db.b),
+    st: db.status,
+    res: db.result,
+    vol: db.volume || 0,
+    ppl: db.players || 0,
+    ea: new Date(db.expires_at).getTime()
+  };
+};
 
 // meme.com API (for initial coin data)
 const API_BASE = "https://api.v2.meme.com";
