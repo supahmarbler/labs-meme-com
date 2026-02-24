@@ -669,7 +669,7 @@ function App() {
     };
 
     updatePrices();
-    const i = setInterval(updatePrices, 15000); // CoinGecko updates every 15s
+    const i = setInterval(updatePrices, 60000); // 60s to avoid CoinGecko rate limits
     return () => clearInterval(i);
   }, [mks.length]);
 
