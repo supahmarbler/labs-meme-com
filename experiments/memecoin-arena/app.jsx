@@ -58,7 +58,7 @@ const saveState = (state) => {
 const syncMarketToDb = async (m) => {
   if (!supabase) return;
   try {
-    // Store user trades only (subtract base liquidity)
+    // Store user trades only (subtract base liquidity which equals B)
     await supabase.from("labs_markets").upsert({
       id: m.id,
       coin_symbol: m.c.sym,
@@ -67,8 +67,8 @@ const syncMarketToDb = async (m) => {
       coin_color: m.c.color,
       start_mc: m.startMc,
       current_mc: m.mc,
-      q_yes: Math.max(0, m.qY - BASE_LIQ),
-      q_no: Math.max(0, m.qN - BASE_LIQ),
+      q_yes: Math.max(0, m.qY - m.b),
+      q_no: Math.max(0, m.qN - m.b),
       b: m.b,
       status: m.st,
       result: m.res,
@@ -94,10 +94,10 @@ const loadMarketsFromDb = async () => {
   }
 };
 
-const BASE_LIQ = INITIAL_LIQUIDITY / 2; // Base liquidity for each side
-
 const dbMarketToLocal = (db, coinData) => {
-  // DB stores user trades only; we add base liquidity locally for LMSR math
+  const mcap = Number(db.current_mc) || 0;
+  const b = Number(db.b) || getB(mcap);
+  // DB stores user trades; we add base liquidity (equal to B) for LMSR math
   return {
     id: db.id,
     c: {
@@ -105,14 +105,14 @@ const dbMarketToLocal = (db, coinData) => {
       name: db.coin_name,
       img: coinData?.img || db.coin_image,
       color: coinData?.color || db.coin_color,
-      mcap: Number(db.current_mc) || 0
+      mcap: mcap
     },
     rn: parseInt(db.id.split("-")[1]) || 1,
-    mc: Number(db.current_mc) || 0,
+    mc: mcap,
     startMc: Number(db.start_mc) || 0,
-    qY: (Number(db.q_yes) || 0) + BASE_LIQ,
-    qN: (Number(db.q_no) || 0) + BASE_LIQ,
-    b: Number(db.b) || 500,
+    qY: (Number(db.q_yes) || 0) + b,
+    qN: (Number(db.q_no) || 0) + b,
+    b: b,
     st: db.status || "OPEN",
     res: db.result,
     vol: Number(db.volume) || 0,
@@ -248,14 +248,17 @@ const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+"
 const DUR = 86400;
 const gld = { background:"linear-gradient(193deg,#f7931a -49%,#fab248 -14%,#fff1a6 58%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" };
 
-const INITIAL_LIQUIDITY = 1000000;
+// B controls market depth - higher B = more liquidity, less price impact
+// Base liquidity should be proportional to B for LMSR to work correctly
+const getB = (mcap) => mcap > 1e9 ? 50000 : mcap > 100e6 ? 30000 : 20000;
 
 const mk = (c, r) => {
+  const b = getB(c.mcap);
   return {
     id:c.sym+"-"+(r||1), c, rn:r||1, mc:c.mcap, startMc:c.mcap,
-    qY:INITIAL_LIQUIDITY/2, qN:INITIAL_LIQUIDITY/2,
-    b:c.mcap > 1e9 ? 1000 : c.mcap > 100e6 ? 800 : 500,
-    st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:INITIAL_LIQUIDITY, ppl:0
+    qY:b, qN:b, // Start with equal shares = 50/50 odds
+    b:b,
+    st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:0, ppl:0
   };
 };
 
