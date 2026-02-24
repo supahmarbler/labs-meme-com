@@ -745,27 +745,17 @@ function App() {
           }}>MEME.COM</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {lastUpdate && <span style={{
-            fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff40"
-          }}>LIVE</span>}
-          {streak >= 3 && <div style={{
-            display:"flex", alignItems:"center", gap:4,
-            background:"#f65e5e22", padding:"6px 12px", borderRadius:16,
-            border:"1px solid #f65e5e44", fontFamily:"'Jersey 25',sans-serif"
-          }}>
-            <span style={{ color:"#f65e5e" }}>{streakLabel(streak)}</span>
-            <span style={{ fontSize:".7em", color:"#f65e5e88" }}>{streak}W</span>
-          </div>}
           <div style={{
-            display:"flex", alignItems:"center", gap:6,
-            background:"linear-gradient(360deg,#212936,#3a4558)",
-            padding:"6px 16px", borderRadius:16, border:"1px solid #ffffff1a",
-            fontFamily:"'Jersey 25',sans-serif"
+            width:36, height:36, borderRadius:18, overflow:"hidden",
+            background:"linear-gradient(135deg,#71BAFF,#4023C3)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize:14, fontWeight:700, flexShrink:0
           }}>
-            <span style={{ fontSize:".7em", color:"#ffffff80" }}>star</span>
-            <span style={gld}>{bal.toLocaleString()}</span>
-            <span style={{ fontSize:".7em", color:"#ffffff80" }}>memescore</span>
+            <span>G</span>
           </div>
+          <span style={{
+            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
+          }}>Guest</span>
         </div>
       </div>
 
