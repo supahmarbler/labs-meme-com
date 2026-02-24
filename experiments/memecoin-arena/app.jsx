@@ -115,10 +115,19 @@ const dbMarketToLocal = (db, coinData) => ({
   ea: new Date(db.expires_at).getTime()
 });
 
-// meme.com API
+// meme.com API (for initial coin data)
 const API_BASE = "https://api.v2.meme.com";
 const COIN_SYMBOLS = ["joe", "stnk", "pengu", "pepe", "mog"];
 const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pengu:"#38BDF8", pepe:"#4ADE80", mog:"#9333EA", doge:"#c2a633" };
+
+// CoinGecko for fast price updates
+const COINGECKO_IDS = {
+  joe: "joe-coin",
+  stnk: "stonks-4",
+  pengu: "pudgy-penguins",
+  pepe: "pepe",
+  mog: "mog-coin"
+};
 
 async function fetchCoins() {
   try {
@@ -142,19 +151,45 @@ async function fetchCoins() {
 
 async function fetchPrices(coins) {
   try {
-    const res = await fetch(`${API_BASE}/farm/coins_leaderboard?page=1&page_size=100`);
+    // Use CoinGecko for faster updates
+    const ids = coins.map(c => COINGECKO_IDS[c.sym.toLowerCase()]).filter(Boolean);
+    if (ids.length === 0) return {};
+
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`
+    );
     const data = await res.json();
+
     const priceMap = {};
-    data.items.forEach(c => {
-      priceMap[c.symbol.toLowerCase()] = {
-        price: c.price_now,
-        mcap: c.market_capitalization
-      };
+    data.forEach(coin => {
+      // Find our symbol from CoinGecko ID
+      const sym = Object.entries(COINGECKO_IDS).find(([k, v]) => v === coin.id)?.[0];
+      if (sym) {
+        priceMap[sym] = {
+          price: coin.current_price,
+          mcap: coin.market_cap
+        };
+      }
     });
     return priceMap;
   } catch (err) {
-    console.error("Failed to fetch prices:", err);
-    return {};
+    console.error("CoinGecko fetch failed, trying meme.com:", err);
+    // Fallback to meme.com API
+    try {
+      const res = await fetch(`${API_BASE}/farm/coins_leaderboard?page=1&page_size=100`);
+      const data = await res.json();
+      const priceMap = {};
+      data.items.forEach(c => {
+        priceMap[c.symbol.toLowerCase()] = {
+          price: c.price_now,
+          mcap: c.market_capitalization
+        };
+      });
+      return priceMap;
+    } catch (e) {
+      console.error("Fallback also failed:", e);
+      return {};
+    }
   }
 }
 
@@ -634,7 +669,7 @@ function App() {
     };
 
     updatePrices();
-    const i = setInterval(updatePrices, 30000);
+    const i = setInterval(updatePrices, 15000); // CoinGecko updates every 15s
     return () => clearInterval(i);
   }, [mks.length]);
 
