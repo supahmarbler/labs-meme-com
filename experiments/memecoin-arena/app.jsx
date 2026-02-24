@@ -413,13 +413,11 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
   const isUp = pctChange > 0;
   const rf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const pnl = pos ? rf - pos.inv : 0;
-  const conv = convBonus(m);
-  const sm = streakMul(streak);
 
   const doBuy = () => {
     const a = parseInt(amt)||0;
     if (a<=0 || a>bal) return;
-    onBuy(m.id, side, a, conv.mul);
+    onBuy(m.id, side, a);
     setAmt("");
     setStep("pos");
   };
@@ -536,19 +534,9 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
           {step==="amt" && (
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <div style={{
-                display:"flex", justifyContent:"space-between", alignItems:"center",
+                display:"flex", justifyContent:"flex-end", alignItems:"center",
                 fontFamily:"'Jersey 25',sans-serif", fontSize:".75em"
               }}>
-                <div style={{ display:"flex", gap:4 }}>
-                  {conv.label && <span style={{
-                    background:conv.color+"22", color:conv.color,
-                    padding:"2px 8px", borderRadius:8, border:"1px solid "+conv.color+"44"
-                  }}>{conv.label}</span>}
-                  {sm > 1 && <span style={{
-                    background:"#f65e5e22", color:"#f65e5e",
-                    padding:"2px 8px", borderRadius:8, border:"1px solid #f65e5e44"
-                  }}>{streakLabel(streak)}</span>}
-                </div>
                 <span style={gld}>BAL: {bal.toLocaleString()}</span>
               </div>
               <input type="number" placeholder="Amount..."
@@ -621,21 +609,13 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
                 {m.res==="YES" ? "WENT UP! ↑" : "WENT DOWN ↓"}
               </div>
               {pos && !pos.claimed && (
-                <div>
-                  {m.res===pos.side && sm > 1 && (
-                    <div style={{
-                      fontFamily:"'Jersey 25',sans-serif", fontSize:".7em",
-                      textAlign:"center", color:"#f65e5e", marginBottom:4
-                    }}>STREAK BONUS {sm}x APPLIED!</div>
-                  )}
-                  <button
-                    style={{ ...bx, background: m.res===pos.side ? "#71baff" : "#00000042" }}
-                    onClick={() => onClaim(m.id)}>
-                    {m.res===pos.side
-                      ? "CLAIM "+Math.round(pos.sh * sm).toLocaleString() + (sm > 1 ? " ("+sm+"x)" : "")
-                      : "CLAIM (0)"}
-                  </button>
-                </div>
+                <button
+                  style={{ ...bx, background: m.res===pos.side ? "#71baff" : "#00000042" }}
+                  onClick={() => onClaim(m.id)}>
+                  {m.res===pos.side
+                    ? "CLAIM "+Math.round(pos.sh).toLocaleString()
+                    : "CLAIM (0)"}
+                </button>
               )}
               {pos && pos.claimed && (
                 <div style={{
@@ -815,32 +795,33 @@ function App() {
     return () => clearInterval(i);
   }, []);
 
-  const onBuy = useCallback((mid, side, amt, convMul) => {
-    const bonus = convMul || 1;
+  const onBuy = useCallback((mid, side, amt) => {
     let updatedMarket = null;
 
-    setMks(p => p.map(m => {
-      if (m.id!==mid || m.st!=="OPEN") return m;
-      const sh = buyShares(m.qY, m.qN, m.b, amt, side) * bonus;
+    const m = mks.find(x => x.id===mid);
+    if (!m || m.st !== "OPEN") return;
+
+    const shares = buyShares(m.qY, m.qN, m.b, amt, side);
+
+    setMks(p => p.map(mk => {
+      if (mk.id !== mid) return mk;
       updatedMarket = {
-        ...m,
-        qY: side==="YES" ? m.qY+sh : m.qY,
-        qN: side==="NO" ? m.qN+sh : m.qN,
-        vol: m.vol+amt,
-        ppl: m.ppl + (pos[mid] ? 0 : 1)
+        ...mk,
+        qY: side==="YES" ? mk.qY + shares : mk.qY,
+        qN: side==="NO" ? mk.qN + shares : mk.qN,
+        vol: mk.vol + amt,
+        ppl: mk.ppl + (pos[mid] ? 0 : 1)
       };
       return updatedMarket;
     }));
 
     setPos(p => {
-      const m = mks.find(x => x.id===mid);
-      const sh = buyShares(m.qY, m.qN, m.b, amt, side) * bonus;
       const e = p[mid];
-      if (e && e.side===side) return { ...p, [mid]:{ ...e, sh:e.sh+sh, inv:e.inv+amt }};
-      return { ...p, [mid]:{ side, sh, inv:amt, claimed:false }};
+      if (e && e.side===side) return { ...p, [mid]:{ ...e, sh: e.sh + shares, inv: e.inv + amt }};
+      return { ...p, [mid]:{ side, sh: shares, inv: amt, claimed: false }};
     });
 
-    setBal(b => b-amt);
+    setBal(b => b - amt);
 
     // Sync to Supabase
     if (updatedMarket) syncMarketToDb(updatedMarket);
@@ -876,13 +857,11 @@ function App() {
     const m = mks.find(x => x.id===mid);
     if (!pp || !m || m.st!=="RES") return;
     const won = m.res===pp.side;
-    const sm = streakMul(streak);
-    const rw = won ? Math.round(pp.sh * sm) : 0;
+    const rw = won ? Math.round(pp.sh) : 0;
     setBal(b => b+rw);
-    setStreak(s => won ? s+1 : 0);
     setPos(p => ({ ...p, [mid]:{ ...p[mid], claimed:true }}));
     setHist(h => [...h, { sym:m.c.sym, rn:m.rn, side:pp.side, result:m.res, rw, inv:pp.inv }]);
-  }, [pos, mks, streak]);
+  }, [pos, mks]);
 
   const ranked = [...mks].sort((a,b) => b.vol-a.vol);
 
