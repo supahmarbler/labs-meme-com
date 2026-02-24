@@ -1,6 +1,21 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
-// Persistence helpers (localStorage for now, Supabase later)
+// Supabase client
+const SUPABASE_URL = "https://csvegolcvwuwssoefxdh.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Qf1O75YbEeBE2qwg4ThmwA_Uxpw9BG4";
+const supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Get or create anonymous user ID
+const getUserId = () => {
+  let id = localStorage.getItem("labs_user_id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("labs_user_id", id);
+  }
+  return id;
+};
+
+// Persistence helpers (localStorage fallback + Supabase sync)
 const STORAGE_KEY = "labs_arena_v1";
 
 const loadState = () => {
@@ -16,6 +31,67 @@ const saveState = (state) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) { console.error("Save failed:", e); }
 };
+
+// Supabase market sync
+const syncMarketToDb = async (m) => {
+  if (!supabase) return;
+  try {
+    await supabase.from("labs_markets").upsert({
+      id: m.id,
+      coin_symbol: m.c.sym,
+      coin_name: m.c.name,
+      coin_image: m.c.img,
+      coin_color: m.c.color,
+      start_mc: m.startMc,
+      current_mc: m.mc,
+      q_yes: m.qY,
+      q_no: m.qN,
+      b: m.b,
+      status: m.st,
+      result: m.res,
+      volume: m.vol,
+      players: m.ppl,
+      expires_at: new Date(m.ea).toISOString()
+    });
+  } catch (e) { console.error("Market sync failed:", e); }
+};
+
+const loadMarketsFromDb = async () => {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from("labs_markets")
+      .select("*")
+      .eq("status", "OPEN");
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    console.error("Load markets failed:", e);
+    return null;
+  }
+};
+
+const dbMarketToLocal = (db, coinData) => ({
+  id: db.id,
+  c: {
+    sym: db.coin_symbol,
+    name: db.coin_name,
+    img: coinData?.img || db.coin_image,
+    color: coinData?.color || db.coin_color,
+    mcap: Number(db.current_mc)
+  },
+  rn: parseInt(db.id.split("-")[1]) || 1,
+  mc: Number(db.current_mc),
+  startMc: Number(db.start_mc),
+  qY: Number(db.q_yes),
+  qN: Number(db.q_no),
+  b: Number(db.b),
+  st: db.status,
+  res: db.result,
+  vol: db.volume || 0,
+  ppl: db.players || 0,
+  ea: new Date(db.expires_at).getTime()
+});
 
 // meme.com API
 const API_BASE = "https://api.v2.meme.com";
@@ -437,43 +513,69 @@ function App() {
   const [, tick] = useState(0);
   const initialized = useRef(false);
 
-  // Load state from localStorage on mount
+  // Load state on mount - try Supabase first, fallback to localStorage
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
     const saved = loadState();
+    const userId = getUserId();
 
-    fetchCoins().then(coins => {
+    const init = async () => {
+      const coins = await fetchCoins();
       if (coins.length === 0) {
         setLoading(false);
         return;
       }
 
-      if (saved && saved.mks && saved.mks.length > 0) {
-        // Restore saved state, but update coin data (images, current prices)
-        const coinMap = {};
-        coins.forEach(c => { coinMap[c.sym] = c; });
+      const coinMap = {};
+      coins.forEach(c => { coinMap[c.sym] = c; });
 
+      // Try loading from Supabase first
+      const dbMarkets = await loadMarketsFromDb();
+
+      if (dbMarkets && dbMarkets.length > 0) {
+        // Use shared markets from DB
+        const localMks = dbMarkets.map(db => dbMarketToLocal(db, coinMap[db.coin_symbol]));
+        setMks(localMks);
+
+        // Load user-specific data from localStorage
+        if (saved) {
+          setPos(saved.pos || {});
+          setBal(saved.bal ?? 10000);
+          setHist(saved.hist || []);
+          setStreak(saved.streak || 0);
+        }
+      } else if (saved && saved.mks && saved.mks.length > 0) {
+        // Fallback to localStorage
         const restoredMks = saved.mks.map(m => {
           const freshCoin = coinMap[m.c.sym];
           if (freshCoin) {
             return { ...m, c: { ...m.c, img: freshCoin.img, color: freshCoin.color } };
           }
           return m;
-        }).filter(m => m); // Filter out any null markets
+        }).filter(m => m);
 
         setMks(restoredMks);
         setPos(saved.pos || {});
         setBal(saved.bal ?? 10000);
         setHist(saved.hist || []);
         setStreak(saved.streak || 0);
+
+        // Sync to Supabase
+        restoredMks.forEach(m => syncMarketToDb(m));
       } else {
         // First time - create fresh markets
-        setMks(coins.map(c => mk(c, 1)));
+        const newMks = coins.map(c => mk(c, 1));
+        setMks(newMks);
+
+        // Sync new markets to Supabase
+        newMks.forEach(m => syncMarketToDb(m));
       }
       setLoading(false);
-    });
+    };
+
+    init();
   }, []);
 
   // Save state whenever it changes
@@ -543,17 +645,21 @@ function App() {
 
   const onBuy = useCallback((mid, side, amt, convMul) => {
     const bonus = convMul || 1;
+    let updatedMarket = null;
+
     setMks(p => p.map(m => {
       if (m.id!==mid || m.st!=="OPEN") return m;
       const sh = buyShares(m.qY, m.qN, m.b, amt, side) * bonus;
-      return {
+      updatedMarket = {
         ...m,
         qY: side==="YES" ? m.qY+sh : m.qY,
         qN: side==="NO" ? m.qN+sh : m.qN,
         vol: m.vol+amt,
         ppl: m.ppl + (pos[mid] ? 0 : 1)
       };
+      return updatedMarket;
     }));
+
     setPos(p => {
       const m = mks.find(x => x.id===mid);
       const sh = buyShares(m.qY, m.qN, m.b, amt, side) * bonus;
@@ -561,7 +667,11 @@ function App() {
       if (e && e.side===side) return { ...p, [mid]:{ ...e, sh:e.sh+sh, inv:e.inv+amt }};
       return { ...p, [mid]:{ side, sh, inv:amt, claimed:false }};
     });
+
     setBal(b => b-amt);
+
+    // Sync to Supabase
+    if (updatedMarket) syncMarketToDb(updatedMarket);
   }, [mks, pos]);
 
   const onSell = useCallback((mid) => {
@@ -569,14 +679,24 @@ function App() {
     const m = mks.find(x => x.id===mid);
     if (!pp || !m) return;
     const rf = sellShares(m.qY, m.qN, m.b, pp.sh, pp.side);
-    setMks(p => p.map(x => x.id!==mid ? x : {
-      ...x,
-      qY: pp.side==="YES" ? Math.max(0,x.qY-pp.sh) : x.qY,
-      qN: pp.side==="NO" ? Math.max(0,x.qN-pp.sh) : x.qN,
-      vol: Math.max(0, x.vol-pp.inv)
+    let updatedMarket = null;
+
+    setMks(p => p.map(x => {
+      if (x.id !== mid) return x;
+      updatedMarket = {
+        ...x,
+        qY: pp.side==="YES" ? Math.max(0,x.qY-pp.sh) : x.qY,
+        qN: pp.side==="NO" ? Math.max(0,x.qN-pp.sh) : x.qN,
+        vol: Math.max(0, x.vol-pp.inv)
+      };
+      return updatedMarket;
     }));
+
     setPos(p => { const n={...p}; delete n[mid]; return n; });
     setBal(b => b+rf);
+
+    // Sync to Supabase
+    if (updatedMarket) syncMarketToDb(updatedMarket);
   }, [pos, mks]);
 
   const onClaim = useCallback((mid) => {
