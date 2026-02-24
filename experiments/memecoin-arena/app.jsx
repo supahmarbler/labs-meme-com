@@ -1,4 +1,21 @@
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
+
+// Persistence helpers (localStorage for now, Supabase later)
+const STORAGE_KEY = "labs_arena_v1";
+
+const loadState = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (e) { console.error("Load failed:", e); }
+  return null;
+};
+
+const saveState = (state) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) { console.error("Save failed:", e); }
+};
 
 // meme.com API
 const API_BASE = "https://api.v2.meme.com";
@@ -418,16 +435,52 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [, tick] = useState(0);
+  const initialized = useRef(false);
 
-  // Load coins from API on mount
+  // Load state from localStorage on mount
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
+    const saved = loadState();
+
     fetchCoins().then(coins => {
-      if (coins.length > 0) {
+      if (coins.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      if (saved && saved.mks && saved.mks.length > 0) {
+        // Restore saved state, but update coin data (images, current prices)
+        const coinMap = {};
+        coins.forEach(c => { coinMap[c.sym] = c; });
+
+        const restoredMks = saved.mks.map(m => {
+          const freshCoin = coinMap[m.c.sym];
+          if (freshCoin) {
+            return { ...m, c: { ...m.c, img: freshCoin.img, color: freshCoin.color } };
+          }
+          return m;
+        }).filter(m => m); // Filter out any null markets
+
+        setMks(restoredMks);
+        setPos(saved.pos || {});
+        setBal(saved.bal ?? 10000);
+        setHist(saved.hist || []);
+        setStreak(saved.streak || 0);
+      } else {
+        // First time - create fresh markets
         setMks(coins.map(c => mk(c, 1)));
       }
       setLoading(false);
     });
   }, []);
+
+  // Save state whenever it changes
+  useEffect(() => {
+    if (loading || mks.length === 0) return;
+    saveState({ mks, pos, bal, hist, streak, savedAt: Date.now() });
+  }, [mks, pos, bal, hist, streak, loading]);
 
   // Real price feed from meme.com API (every 30 seconds)
   useEffect(() => {
