@@ -15,6 +15,28 @@ const getUserId = () => {
   return id;
 };
 
+// Try to get meme.com user from shared cookies/localStorage
+const getMemeUser = () => {
+  try {
+    // Check common localStorage keys meme.com might use
+    const keys = ['user', 'meme_user', 'auth_user', 'currentUser', 'profile'];
+    for (const key of keys) {
+      const data = localStorage.getItem(key);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (parsed && (parsed.username || parsed.name || parsed.id)) {
+          return {
+            id: parsed.id || parsed.user_id,
+            username: parsed.username || parsed.name || parsed.display_name,
+            image: parsed.profile_image_url || parsed.avatar || parsed.image || parsed.profileImage
+          };
+        }
+      }
+    }
+  } catch (e) { console.log("No meme.com user found:", e); }
+  return null;
+};
+
 // Persistence helpers (localStorage fallback + Supabase sync)
 const STORAGE_KEY = "labs_arena_v1";
 
@@ -511,7 +533,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [, tick] = useState(0);
+  const [memeUser, setMemeUser] = useState(null);
   const initialized = useRef(false);
+
+  // Check for meme.com auth on mount
+  useEffect(() => {
+    const user = getMemeUser();
+    if (user) setMemeUser(user);
+  }, []);
 
   // Load state on mount - try Supabase first, fallback to localStorage
   useEffect(() => {
@@ -751,11 +780,14 @@ function App() {
             display:"flex", alignItems:"center", justifyContent:"center",
             fontSize:14, fontWeight:700, flexShrink:0
           }}>
-            <span>G</span>
+            {memeUser?.image
+              ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+              : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
+            }
           </div>
           <span style={{
             fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
-          }}>Guest</span>
+          }}>{memeUser?.username || "Guest"}</span>
         </div>
       </div>
 
