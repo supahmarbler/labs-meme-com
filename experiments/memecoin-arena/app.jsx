@@ -204,11 +204,14 @@ const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+"
 const DUR = 86400;
 const gld = { background:"linear-gradient(193deg,#f7931a -49%,#fab248 -14%,#fff1a6 58%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" };
 
+const INITIAL_LIQUIDITY = 1000000;
+
 const mk = (c, r) => {
   return {
     id:c.sym+"-"+(r||1), c, rn:r||1, mc:c.mcap, startMc:c.mcap,
-    qY:0, qN:0, b:c.mcap > 1e9 ? 1000 : c.mcap > 100e6 ? 800 : 500,
-    st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:0, ppl:0
+    qY:INITIAL_LIQUIDITY/2, qN:INITIAL_LIQUIDITY/2,
+    b:c.mcap > 1e9 ? 1000 : c.mcap > 100e6 ? 800 : 500,
+    st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:INITIAL_LIQUIDITY, ppl:0
   };
 };
 
