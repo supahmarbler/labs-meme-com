@@ -105,18 +105,18 @@ const dbMarketToLocal = (db, coinData) => {
       name: db.coin_name,
       img: coinData?.img || db.coin_image,
       color: coinData?.color || db.coin_color,
-      mcap: Number(db.current_mc)
+      mcap: Number(db.current_mc) || 0
     },
     rn: parseInt(db.id.split("-")[1]) || 1,
-    mc: Number(db.current_mc),
-    startMc: Number(db.start_mc),
-    qY: Number(db.q_yes) + BASE_LIQ,
-    qN: Number(db.q_no) + BASE_LIQ,
-    b: Number(db.b),
-    st: db.status,
+    mc: Number(db.current_mc) || 0,
+    startMc: Number(db.start_mc) || 0,
+    qY: (Number(db.q_yes) || 0) + BASE_LIQ,
+    qN: (Number(db.q_no) || 0) + BASE_LIQ,
+    b: Number(db.b) || 500,
+    st: db.status || "OPEN",
     res: db.result,
-    vol: db.volume || 0,
-    ppl: db.players || 0,
+    vol: Number(db.volume) || 0,
+    ppl: Number(db.players) || 0,
     ea: new Date(db.expires_at).getTime()
   };
 };
@@ -208,10 +208,13 @@ const costFn = (qY, qN, B) => {
 
 // Probability of YES
 const yP = (qY, qN, B) => {
-  if (!B) return 50;
-  const m = Math.max(qY, qN) / B;
-  const eY = Math.exp(qY/B - m), eN = Math.exp(qN/B - m);
-  return Math.min(99, Math.max(1, Math.round(eY / (eY + eN) * 100)));
+  if (!B || isNaN(qY) || isNaN(qN)) return 50;
+  const y = Number(qY) || 0;
+  const n = Number(qN) || 0;
+  const m = Math.max(y, n) / B;
+  const eY = Math.exp(y/B - m), eN = Math.exp(n/B - m);
+  const result = Math.round(eY / (eY + eN) * 100);
+  return isNaN(result) ? 50 : Math.min(99, Math.max(1, result));
 };
 
 // Buy shares: cost -> shares (using binary search for numerical stability)
