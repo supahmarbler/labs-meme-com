@@ -911,7 +911,7 @@ function App() {
           }}>
             <span style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", color:"#ffffff60"
-            }}>BAL:</span>
+            }}>MEMESCORE:</span>
             <span style={{
               ...gld, fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
             }}>{bal.toLocaleString()}</span>
