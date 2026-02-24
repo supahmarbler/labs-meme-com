@@ -285,6 +285,98 @@ const convBonus = (m) => {
 const streakMul = (s) => s >= 10 ? 3 : s >= 5 ? 2 : s >= 3 ? 1.5 : 1;
 const streakLabel = (s) => s >= 10 ? "ON FIRE 3x" : s >= 5 ? "HOT STREAK 2x" : s >= 3 ? "STREAK 1.5x" : null;
 
+// Deposit modal component
+const DepositModal = ({ isOpen, onClose, onDeposit, memeUser }) => {
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleDeposit = async () => {
+    const amt = parseInt(amount) || 0;
+    if (amt <= 0) return;
+
+    setLoading(true);
+
+    // TODO: Replace with real API call when available
+    // await fetch('/api/deposit', { method: 'POST', body: JSON.stringify({ amount: amt }) })
+
+    // Simulated deposit for now
+    await new Promise(r => setTimeout(r, 500));
+    onDeposit(amt);
+    setAmount("");
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.8)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:100
+    }} onClick={onClose}>
+      <div style={{
+        background:"linear-gradient(180deg,#1a2332,#0c1018)",
+        borderRadius:20, padding:24, minWidth:320,
+        border:"1px solid #ffffff15"
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{
+          fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
+          marginBottom:16, textAlign:"center"
+        }}>Deposit Memescore</div>
+
+        {!memeUser && (
+          <div style={{
+            fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
+            color:"#f7931a", textAlign:"center", marginBottom:16,
+            padding:12, background:"#f7931a15", borderRadius:10
+          }}>
+            Connect to meme.com to deposit real memescore.
+            <br/>Using demo mode for now.
+          </div>
+        )}
+
+        <input
+          type="number"
+          placeholder="Amount..."
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+          style={{
+            width:"100%", height:48, border:"1px solid #4c5159", borderRadius:12,
+            textAlign:"center", color:"#fff", background:"#0c1018",
+            fontFamily:"'Jersey 25',sans-serif", fontSize:"1.2em", outline:"none",
+            marginBottom:12
+          }}
+        />
+
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          {[1000, 5000, 10000, 50000].map(amt => (
+            <button key={amt} onClick={() => setAmount(String(amt))} style={{
+              flex:1, padding:"8px 0", borderRadius:8,
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
+              background:"#00000042", border:"1px solid #ffffff15",
+              color:"#ffffff80", cursor:"pointer"
+            }}>{(amt/1000)}K</button>
+          ))}
+        </div>
+
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onClose} style={{
+            flex:1, height:44, borderRadius:12, border:"none",
+            background:"#ffffff15", color:"#fff", cursor:"pointer",
+            fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
+          }}>Cancel</button>
+          <button onClick={handleDeposit} disabled={loading || !amount} style={{
+            flex:2, height:44, borderRadius:12, border:"none",
+            background: loading ? "#4c5159" : "linear-gradient(90deg,#71BAFF,#4023C3)",
+            color:"#fff", cursor: loading ? "wait" : "pointer",
+            fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
+          }}>{loading ? "Processing..." : "Deposit"}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
   const [step, setStep] = useState("sel");
   const [side, setSide] = useState(null);
@@ -572,6 +664,7 @@ function App() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [, tick] = useState(0);
   const [memeUser, setMemeUser] = useState(null);
+  const [showDeposit, setShowDeposit] = useState(false);
   const initialized = useRef(false);
 
   // Check for meme.com auth on mount
@@ -811,21 +904,40 @@ function App() {
             textTransform:"uppercase"
           }}>MEME.COM</span>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <div style={{
-            width:36, height:36, borderRadius:18, overflow:"hidden",
-            background:"linear-gradient(135deg,#71BAFF,#4023C3)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:14, fontWeight:700, flexShrink:0
+            display:"flex", alignItems:"center", gap:8,
+            background:"#0c1018", padding:"6px 12px", borderRadius:12
           }}>
-            {memeUser?.image
-              ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-              : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
-            }
+            <span style={{
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", color:"#ffffff60"
+            }}>BAL:</span>
+            <span style={{
+              ...gld, fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
+            }}>{bal.toLocaleString()}</span>
+            <button onClick={() => setShowDeposit(true)} style={{
+              background:"linear-gradient(90deg,#71BAFF,#4023C3)",
+              border:"none", borderRadius:6, padding:"4px 10px",
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
+              color:"#fff", cursor:"pointer", marginLeft:4
+            }}>+ DEPOSIT</button>
           </div>
-          <span style={{
-            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
-          }}>{memeUser?.username || "Guest"}</span>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{
+              width:36, height:36, borderRadius:18, overflow:"hidden",
+              background:"linear-gradient(135deg,#71BAFF,#4023C3)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:14, fontWeight:700, flexShrink:0
+            }}>
+              {memeUser?.image
+                ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
+              }
+            </div>
+            <span style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
+            }}>{memeUser?.username || "Guest"}</span>
+          </div>
         </div>
       </div>
 
@@ -992,6 +1104,13 @@ function App() {
           </div>
         </div>
       </div>
+
+      <DepositModal
+        isOpen={showDeposit}
+        onClose={() => setShowDeposit(false)}
+        onDeposit={(amt) => setBal(b => b + amt)}
+        memeUser={memeUser}
+      />
     </div>
   );
 }
