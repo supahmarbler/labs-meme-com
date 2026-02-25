@@ -481,7 +481,7 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
               <span style={{
                 color: isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40"
               }}>
-                {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {fM(Math.abs(m.mc - m.startMc))}
+                {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {Math.abs(pctChange).toFixed(2)}%
               </span>
             </div>
             <div style={{
