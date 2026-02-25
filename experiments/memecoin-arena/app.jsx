@@ -123,8 +123,8 @@ const dbMarketToLocal = (db, coinData) => {
 
 // meme.com API (for initial coin data)
 const API_BASE = "https://api.v2.meme.com";
-const COIN_SYMBOLS = ["joe", "stnk", "pengu", "pepe", "mog"];
-const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pengu:"#38BDF8", pepe:"#4ADE80", mog:"#9333EA", doge:"#c2a633" };
+const COIN_SYMBOLS = ["joe", "stnk", "pengu", "pepe", "mog", "dog"];
+const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pengu:"#38BDF8", pepe:"#4ADE80", mog:"#9333EA", dog:"#c2a633" };
 
 // CoinGecko for fast price updates
 const COINGECKO_IDS = {
@@ -132,7 +132,8 @@ const COINGECKO_IDS = {
   stnk: "stonks-4",
   pengu: "pudgy-penguins",
   pepe: "pepe",
-  mog: "mog-coin"
+  mog: "mog-coin",
+  dog: "the-doge-nft"
 };
 
 async function fetchCoins() {
