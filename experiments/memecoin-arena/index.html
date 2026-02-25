@@ -10,10 +10,44 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:#0c1018; }
+    body { background:#0c1018; overflow-x:hidden; }
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
     input[type=number] { -moz-appearance:textfield; }
+
+    /* Mobile responsive layout */
+    .arena-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: stretch;
+    }
+    .arena-cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .arena-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    @media (min-width: 1000px) {
+      .arena-layout {
+        display: grid;
+        grid-template-columns: 1fr 20em;
+        align-items: start;
+      }
+      .arena-cards {
+        grid-template-columns: repeat(auto-fill, minmax(17em, 1fr));
+        gap: 16px;
+      }
+      .arena-sidebar {
+        position: sticky;
+        top: 60px;
+      }
+    }
   </style>
 </head>
 <body>

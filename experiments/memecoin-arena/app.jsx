@@ -1,4 +1,15 @@
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+// Mobile detection hook
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1000);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1000);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  return isMobile;
+};
 
 // Supabase client
 const SUPABASE_URL = "https://csvegolcvwuwssoefxdh.supabase.co";
@@ -299,7 +310,7 @@ const streakMul = (s) => s >= 10 ? 3 : s >= 5 ? 2 : s >= 3 ? 1.5 : 1;
 const streakLabel = (s) => s >= 10 ? "ON FIRE 3x" : s >= 5 ? "HOT STREAK 2x" : s >= 3 ? "STREAK 1.5x" : null;
 
 // Deposit modal component
-const DepositModal = ({ isOpen, onClose, onDeposit, memeUser }) => {
+const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, isMobile }) => {
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -325,11 +336,15 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser }) => {
   return (
     <div style={{
       position:"fixed", inset:0, background:"rgba(0,0,0,0.8)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:100
+      display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
     }} onClick={onClose}>
       <div style={{
         background:"linear-gradient(180deg,#1a2332,#0c1018)",
-        borderRadius:20, padding:24, minWidth:320,
+        borderRadius: isMobile ? "20px 20px 0 0" : 20,
+        padding: isMobile ? "20px 16px 32px" : 24,
+        width: isMobile ? "100%" : "auto",
+        minWidth: isMobile ? "auto" : 320,
+        maxWidth: isMobile ? "100%" : 400,
         border:"1px solid #ffffff15"
       }} onClick={e => e.stopPropagation()}>
         <div style={{
@@ -350,6 +365,8 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser }) => {
 
         <input
           type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
           placeholder="Amount..."
           value={amount}
           onChange={e => setAmount(e.target.value)}
@@ -390,7 +407,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser }) => {
   );
 };
 
-const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
+const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
   const [step, setStep] = useState("sel");
   const [side, setSide] = useState(null);
   const [amt, setAmt] = useState("");
@@ -540,12 +557,13 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
               }}>
                 <span style={gld}>BAL: {bal.toLocaleString()}</span>
               </div>
-              <input type="number" placeholder="Amount..."
+              <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
                 value={amt} onChange={e => setAmt(e.target.value)} autoFocus
                 style={{
                   height:42, border:"1px solid #4c5159", borderRadius:15,
                   textAlign:"center", color:"#fff", background:"transparent",
-                  fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none"
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none",
+                  width:"100%"
                 }}/>
               <div style={{ display:"flex", gap:6, marginBottom:4 }}>
                 {[10,25,50,100].map(p =>
@@ -659,6 +677,7 @@ function App() {
   const [memeUser, setMemeUser] = useState(null);
   const [showDeposit, setShowDeposit] = useState(false);
   const initialized = useRef(false);
+  const isMobile = useIsMobile();
 
   // Check for meme.com auth on mount
   useEffect(() => {
@@ -881,91 +900,101 @@ function App() {
   return (
     <div style={{
       minHeight:"100vh", background:"#0c1018", color:"#fff",
-      fontFamily:"'Mulish',sans-serif", zoom:"150%"
+      fontFamily:"'Mulish',sans-serif"
     }}>
       <link href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@400;900&family=Jersey+25&family=Mulish:wght@400;700&display=swap" rel="stylesheet"/>
 
       <div style={{
-        padding:"12px 24px", borderBottom:"1px solid #ffffff0d",
+        padding: isMobile ? "10px 12px" : "12px 24px",
+        borderBottom:"1px solid #ffffff0d",
         display:"flex", justifyContent:"space-between", alignItems:"center",
-        background:"#0f1620", position:"sticky", top:0, zIndex:10
+        background:"#0f1620", position:"sticky", top:0, zIndex:10,
+        gap: isMobile ? 8 : 16
       }}>
-        <div>
+        <div style={{ flexShrink: 0 }}>
           <span style={{
-            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.5em",
+            fontFamily:"'Londrina Solid',sans-serif",
+            fontSize: isMobile ? "1.1em" : "1.5em",
             textTransform:"uppercase"
           }}>MEME.COM</span>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+        <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{
-            display:"flex", alignItems:"center", gap:8,
-            background:"#0c1018", padding:"6px 12px", borderRadius:12
+            display:"flex", alignItems:"center", gap: isMobile ? 4 : 8,
+            background:"#0c1018", padding: isMobile ? "4px 8px" : "6px 12px", borderRadius:12
           }}>
-            <span style={{
+            {!isMobile && <span style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", color:"#ffffff60"
-            }}>MEMESCORE:</span>
+            }}>MEMESCORE:</span>}
             <span style={{
-              ...gld, fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
+              ...gld, fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".9em" : "1em"
             }}>{bal.toLocaleString()}</span>
             <button onClick={() => setShowDeposit(true)} style={{
               background:"linear-gradient(90deg,#71BAFF,#4023C3)",
-              border:"none", borderRadius:6, padding:"4px 10px",
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
-              color:"#fff", cursor:"pointer", marginLeft:4
-            }}>+ DEPOSIT</button>
+              border:"none", borderRadius:6, padding: isMobile ? "3px 6px" : "4px 10px",
+              fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".65em" : ".75em",
+              color:"#fff", cursor:"pointer", marginLeft: isMobile ? 2 : 4
+            }}>+</button>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{
-              width:36, height:36, borderRadius:18, overflow:"hidden",
-              background:"linear-gradient(135deg,#71BAFF,#4023C3)",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:14, fontWeight:700, flexShrink:0
-            }}>
-              {memeUser?.image
-                ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-                : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
-              }
-            </div>
-            <span style={{
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
-            }}>{memeUser?.username || "Guest"}</span>
+          <div style={{
+            width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius: "50%", overflow:"hidden",
+            background:"linear-gradient(135deg,#71BAFF,#4023C3)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize: isMobile ? 12 : 14, fontWeight:700, flexShrink:0
+          }}>
+            {memeUser?.image
+              ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+              : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
+            }
           </div>
+          {!isMobile && <span style={{
+            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
+          }}>{memeUser?.username || "Guest"}</span>}
         </div>
       </div>
 
-      <div style={{ maxWidth:"72em", margin:"0 auto", padding:"20px 2.5% 48px" }}>
-        <div style={{
-          fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.6em",
-          textTransform:"uppercase", textShadow:"0 2px 4px rgba(0,0,0,.5)"
-        }}>Memecoin Arena</div>
-        <div style={{
-          fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
-          color:"#ffffff60", marginBottom:16
-        }}>
-          Predict targets. Vote with conviction on your favorite memes.{" "}
-          <span style={{ color:"#f7931a" }}>24h rounds</span>
+      <div style={{ maxWidth:"72em", margin:"0 auto", padding: isMobile ? "12px 12px 24px" : "20px 2.5% 48px" }}>
+        <div style={{ marginBottom: isMobile ? 8 : 16 }}>
+          <div style={{
+            fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? "1.3em" : "1.6em",
+            textTransform:"uppercase", textShadow:"0 2px 4px rgba(0,0,0,.5)"
+          }}>Memecoin Arena</div>
+          <div style={{
+            fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".75em" : ".9em",
+            color:"#ffffff60"
+          }}>
+            {isMobile ? "24h prediction rounds" : "Predict targets. Vote with conviction on your favorite memes. "}
+            {!isMobile && <span style={{ color:"#f7931a" }}>24h rounds</span>}
+          </div>
         </div>
 
         <div style={{
-          display:"grid", gridTemplateColumns:"1fr 20em",
-          gap:20, alignItems:"start"
+          display: isMobile ? "flex" : "grid",
+          flexDirection: isMobile ? "column" : undefined,
+          gridTemplateColumns: isMobile ? undefined : "1fr 20em",
+          gap: 20,
+          alignItems: isMobile ? "stretch" : "start"
         }}>
           <div style={{
-            display:"grid",
-            gridTemplateColumns:"repeat(auto-fill,minmax(17em,1fr))",
-            gap:16
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(17em, 1fr))",
+            gap: isMobile ? 12 : 16
           }}>
             {mks.map(m =>
               <Card key={m.id} m={m} bal={bal} streak={streak}
                 pos={pos[m.id]||null}
-                onBuy={onBuy} onSell={onSell} onClaim={onClaim}/>
+                onBuy={onBuy} onSell={onSell} onClaim={onClaim}
+                isMobile={isMobile}/>
             )}
           </div>
 
           <div style={{
-            display:"flex", flexDirection:"column", gap:16,
-            position:"sticky", top:60
-          }}>
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            position: isMobile ? "static" : "sticky",
+            top: isMobile ? undefined : 60
+          }}
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
               borderRadius:25, overflow:"hidden"
@@ -1102,7 +1131,9 @@ function App() {
         onClose={() => setShowDeposit(false)}
         onDeposit={(amt) => setBal(b => b + amt)}
         memeUser={memeUser}
+        isMobile={isMobile}
       />
+
     </div>
   );
 }
