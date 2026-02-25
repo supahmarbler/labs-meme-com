@@ -994,7 +994,7 @@ function App() {
             gap: 16,
             position: isMobile ? "static" : "sticky",
             top: isMobile ? undefined : 60
-          }}
+          }}>
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
               borderRadius:25, overflow:"hidden"
