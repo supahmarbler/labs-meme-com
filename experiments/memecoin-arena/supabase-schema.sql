@@ -55,6 +55,69 @@ create policy "Allow all" on labs_markets for all using (true) with check (true)
 create policy "Allow all" on labs_positions for all using (true) with check (true);
 
 -- Index for faster lookups
-create index idx_positions_user on labs_positions(user_id);
-create index idx_positions_market on labs_positions(market_id);
-create index idx_markets_status on labs_markets(status);
+create index if not exists idx_positions_user on labs_positions(user_id);
+create index if not exists idx_positions_market on labs_positions(market_id);
+create index if not exists idx_markets_status on labs_markets(status);
+
+-- ============================================================
+-- MIGRATION: Add stats columns to labs_users
+-- ============================================================
+alter table labs_users add column if not exists total_volume int default 0;
+alter table labs_users add column if not exists wins int default 0;
+alter table labs_users add column if not exists losses int default 0;
+alter table labs_users add column if not exists current_streak int default 0;
+alter table labs_users add column if not exists best_streak int default 0;
+alter table labs_users add column if not exists profile_image text;
+alter table labs_users add column if not exists updated_at timestamptz default now();
+
+-- Index for leaderboard queries
+create index if not exists idx_users_volume on labs_users(total_volume desc);
+
+-- ============================================================
+-- Trades history table
+-- ============================================================
+create table if not exists labs_trades (
+  id serial primary key,
+  user_id uuid references labs_users(id) on delete cascade,
+  market_id text not null,
+  coin_symbol text not null,
+  side text not null check (side in ('YES', 'NO')),
+  shares numeric not null,
+  amount int not null,
+  trade_type text not null check (trade_type in ('BUY', 'SELL', 'CLAIM')),
+  result text check (result in ('YES', 'NO')),
+  pnl int,
+  created_at timestamptz default now()
+);
+
+alter table labs_trades enable row level security;
+create policy "Allow all" on labs_trades for all using (true) with check (true);
+
+create index if not exists idx_trades_user on labs_trades(user_id);
+create index if not exists idx_trades_market on labs_trades(market_id);
+create index if not exists idx_trades_created on labs_trades(created_at desc);
+
+-- ============================================================
+-- Leaderboard view
+-- ============================================================
+create or replace view labs_leaderboard as
+select
+  id,
+  username,
+  profile_image,
+  total_volume,
+  wins,
+  losses,
+  current_streak,
+  best_streak,
+  case when (wins + losses) > 0
+    then round(wins::numeric / (wins + losses) * 100, 1)
+    else 0
+  end as win_rate
+from labs_users
+where total_volume > 0
+order by total_volume desc
+limit 50;
+
+-- Grant access to views
+grant select on labs_leaderboard to anon, authenticated;
