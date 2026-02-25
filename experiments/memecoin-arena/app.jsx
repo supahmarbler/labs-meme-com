@@ -458,24 +458,24 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak }) => {
         </div>
 
         <div style={{
-          display:"flex", alignItems:"flex-end", gap:16, marginBottom:10
+          display:"flex", alignItems:"center", gap:16, marginBottom:10
         }}>
           <div>
             <div style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
-              color:"#ffffff40", marginBottom:2
+              color:"#ffffff40", marginBottom:2, height:14
             }}>PRICE TO BEAT</div>
             <div style={{
               fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em",
               color:"#94a3b8"
             }}>{fM(m.startMc)}</div>
           </div>
-          <div style={{ width:1, height:24, background:"#ffffff20", marginBottom:4 }}/>
+          <div style={{ width:1, height:32, background:"#ffffff20" }}/>
           <div>
             <div style={{
               display:"flex", alignItems:"center", gap:6,
               fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
-              color:"#ffffff40", marginBottom:2
+              color:"#ffffff40", marginBottom:2, height:14
             }}>
               <span>CURRENT PRICE</span>
               <span style={{
