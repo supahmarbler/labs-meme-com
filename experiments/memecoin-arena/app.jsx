@@ -2070,48 +2070,36 @@ function App() {
       {showProfile && (() => {
         const holdings = [
           { sym:"PEPE", tier:"gold", img:"https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png" },
-          { sym:"DOGE", tier:"silver", img:"https://cdn.meme.com/images-4/meme_assets/2024-11-08/1731078819010sFOw.png" },
-          { sym:"JOE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
-          { sym:"PENGU", tier:"bronze", img:"https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
+          { sym:"DOGE", tier:"purple", img:"https://cdn.meme.com/images-4/meme_assets/2024-11-08/1731078819010sFOw.png" },
+          { sym:"JOE", tier:"purple", img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
+          { sym:"PENGU", tier:"green", img:"https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
         ];
-        // Exact meme.com farm color system
-        const tierFrame = {
-          gold: ["#ff7900","#ffcb15"],    // gradient bottom → top
-          silver: ["#e900d7","#fe6aff"],
-          bronze: ["#69b69b","#d4ffed"]
-        };
-        const tierDiamond = {
-          gold: ["#ff7900","#993e00"],    // outer, inner
-          silver: ["#ff14f9","#a600b4"],
-          bronze: ["#69b69b","#008a75"]
-        };
-        const tierHover = { gold:"#ff7900", silver:"#d437e5", bronze:"#8ddddf" };
-        return (
+        const tierColors = { gold:"#ff7900", purple:"#e900d7", green:"#69b69b" };
+        const tierColors2 = { gold:"#ffcb15", purple:"#fe6aff", green:"#d4ffed" };
+        return (<>
           <div onClick={() => setShowProfile(false)} style={{
-            position:"fixed", inset:0, background:"rgba(0,0,0,0.85)",
-            backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)",
-            display:"flex", alignItems:"center", justifyContent:"center", zIndex:100
+            position:"fixed", inset:0, background:"#000000cc", zIndex:50,
+            backdropFilter:"blur(8px)"
+          }}/>
+          <div style={{
+            position:"fixed", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+            width:"min(680px, 92vw)", maxHeight:"85vh", overflowY:"auto",
+            background:"linear-gradient(180deg, #0c1018 0%, #151d2b 100%)",
+            border:"1px solid #ffffff15", borderRadius:20,
+            zIndex:51, padding:0,
+            boxShadow:"0 0 80px #00000080, 0 0 200px #71BAFF10"
           }}>
-            <div onClick={e => e.stopPropagation()} style={{
-              background:"linear-gradient(180deg,#1a2332,#0c1018)",
-              borderRadius:20, padding: isMobile ? "20px 16px 24px" : "28px 32px 32px",
-              width: isMobile ? "92%" : "auto", maxWidth:680, minWidth: isMobile ? "auto" : 420,
-              border:"1px solid #ffffff15", position:"relative"
+            <div style={{
+              padding:"16px 24px", display:"flex", justifyContent:"space-between",
+              alignItems:"center", borderBottom:"1px solid #ffffff0d"
             }}>
-              {/* Close button */}
-              <button onClick={() => setShowProfile(false)} style={{
-                position:"absolute", top:14, right:16, background:"none", border:"none",
-                color:"#ffffff60", fontSize:"1.3em", cursor:"pointer", padding:4,
-                fontFamily:"'Jersey 25',sans-serif"
-              }}>X</button>
-
-              {/* Header */}
-              <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <div style={{
-                  width:52, height:52, borderRadius:"50%", overflow:"hidden",
+                  width:40, height:40, borderRadius:20, overflow:"hidden",
                   background:"linear-gradient(135deg,#71BAFF,#4023C3)",
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:20, fontWeight:700, flexShrink:0
+                  fontSize:17, fontWeight:700, flexShrink:0,
+                  border:"2px solid #71BAFF44"
                 }}>
                   {memeUser?.image
                     ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
@@ -2120,89 +2108,80 @@ function App() {
                 </div>
                 <div>
                   <div style={{
-                    fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.4em"
+                    fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
                   }}>{memeUser?.username || "Guest"}</div>
-                  <div style={{ display:"flex", gap:16, marginTop:2 }}>
-                    <span style={{
-                      fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", color:"#ffffff60"
-                    }}>MEMESCORE: <span style={gld}>{memescore.toLocaleString()}</span></span>
-                    <span style={{
-                      fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", color:"#ffffff60"
-                    }}>STREAK: <span style={{ color:"#f7931a" }}>{streak}</span></span>
+                  <div style={{
+                    fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff40"
+                  }}>
+                    <span style={gld}>{bal.toLocaleString()} memescore</span>
+                    {streak > 0 && <span style={{ color:"#f65e5e", marginLeft:8 }}>{streak}W streak</span>}
                   </div>
                 </div>
               </div>
-
-              {/* Divider */}
-              <div style={{ height:1, background:"#ffffff10", margin:"0 0 20px" }}/>
-
-              {/* Inventory label */}
+              <span onClick={() => setShowProfile(false)} style={{
+                cursor:"pointer", color:"#ffffff40", fontSize:"1.4em", padding:"4px 8px",
+                lineHeight:1
+              }}>✕</span>
+            </div>
+            <div style={{ padding:"20px 24px" }}>
               <div style={{
-                fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
-                color:"#ffffff40", letterSpacing:2, marginBottom:14
+                fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
+                textTransform:"uppercase", color:"#ffffff50", marginBottom:14,
+                letterSpacing:".08em"
               }}>MEME INVENTORY</div>
-
-              {/* Card grid — exact meme.com farm card replica */}
               <div style={{
-                display:"flex", flexWrap:"wrap", gap:12, justifyContent:"center"
+                display:"grid",
+                gridTemplateColumns:"repeat(auto-fill, minmax(110px, 1fr))",
+                gap:12
               }}>
-                {holdings.map(h => {
-                  const [f1,f2] = tierFrame[h.tier];
-                  const [dfOuter,dfInner] = tierDiamond[h.tier];
-                  const sz = 62; // coin card size in px
-                  const bw = 2;  // border width
-                  const br = 5;  // border radius
-                  const ibr = 4; // inner border radius
-                  const ibw = 1; // inner border width
+                {holdings.map((h, i) => {
+                  const tc = tierColors[h.tier];
+                  const tc2 = tierColors2[h.tier];
                   return (
-                    <div key={h.sym} style={{
-                      display:"flex", flexDirection:"column", alignItems:"center",
-                      filter:"drop-shadow(0px 3px 4px #000)",
-                      transition:"filter 0.2s ease-in-out", cursor:"default"
+                    <div key={i} style={{
+                      background:"#1a1a1a",
+                      border:"2.5px solid " + tc,
+                      borderRadius:12,
+                      overflow:"hidden",
+                      display:"flex", flexDirection:"column",
+                      boxShadow:"0 0 12px " + tc + "33, inset 0 0 16px " + tc + "0a",
+                      cursor:"pointer", transition:"transform .15s, box-shadow .15s"
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.filter=`drop-shadow(0px 0px 5px ${tierHover[h.tier]})`; }}
-                    onMouseLeave={e => { e.currentTarget.style.filter="drop-shadow(0px 3px 4px #000)"; }}
+                    onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow="0 0 24px "+tc+"55, inset 0 0 16px "+tc+"15"; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 0 12px "+tc+"33, inset 0 0 16px "+tc+"0a"; }}
                     >
-                      {/* Card frame */}
                       <div style={{
-                        width:sz, height:sz, position:"relative", borderRadius:br
+                        width:"100%", aspectRatio:"1", position:"relative",
+                        background:"linear-gradient(180deg, " + tc + "11, " + tc + "05)",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        overflow:"hidden"
                       }}>
-                        {/* Gradient border */}
+                        <img src={h.img} alt={h.sym}
+                          style={{ width:"78%", height:"78%", objectFit:"contain", borderRadius:8 }}
+                          onError={e => { e.target.style.display="none"; }}
+                          crossOrigin="anonymous"
+                        />
                         <div style={{
-                          position:"absolute", inset:0, borderRadius:br,
-                          background:`linear-gradient(0deg, ${f1}, ${f2})`
-                        }}/>
-                        {/* Inner dark bg */}
-                        <div style={{
-                          position:"absolute", top:bw, left:bw, right:bw, bottom:bw,
-                          borderRadius:ibr, background:"#2a2929",
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          overflow:"hidden"
-                        }}>
-                          {/* Coin image */}
-                          <img src={h.img} alt={h.sym} style={{
-                            width:`calc(100% - ${ibw*2}px)`, height:`calc(100% - ${ibw*2}px)`,
-                            objectFit:"cover", borderRadius:ibr, display:"block"
-                          }}/>
-                        </div>
+                          position:"absolute", top:6, right:6,
+                          fontFamily:"'Jersey 25',sans-serif", fontSize:".55em",
+                          background:tc + "33", color:tc, padding:"1px 6px",
+                          borderRadius:6, border:"1px solid " + tc + "66",
+                          textTransform:"uppercase"
+                        }}>{h.tier}</div>
                       </div>
-                      {/* Diamond frame (trapezoid tab) */}
                       <div style={{
-                        width:sz, height:16, position:"relative",
-                        clipPath:"polygon(10% 0%, 10% 60%, 20% 100%, 80% 100%, 90% 60%, 90% 0%)",
-                        background:dfOuter,
-                        display:"flex", justifyContent:"center", alignItems:"center"
+                        background:"linear-gradient(180deg, " + tc + "cc, " + tc2 + "99)",
+                        padding:"6px 8px",
+                        display:"flex", alignItems:"center", justifyContent:"space-between"
                       }}>
-                        {/* Inner darker trapezoid */}
                         <div style={{
-                          position:"absolute", inset:0,
-                          clipPath:`polygon(calc(10% + ${bw}px) 0%, calc(10% + ${bw}px) calc(60% - ${bw/2}px), calc(20% + ${bw/2}px) calc(100% - ${bw}px), calc(80% - ${bw/2}px) calc(100% - ${bw}px), calc(90% - ${bw}px) calc(60% - ${bw/2}px), calc(90% - ${bw}px) 0%)`,
-                          background:dfInner
-                        }}/>
-                        {/* Diamond icon — exact meme.com asset */}
-                        <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
-                          width:14, height:9, zIndex:1, marginBottom:1
-                        }}/>
+                          fontFamily:"'Londrina Solid',sans-serif", fontSize:".75em",
+                          color:"#fff", textShadow:"0 1px 2px rgba(0,0,0,.4)"
+                        }}>${h.sym}</div>
+                        <div style={{
+                          width:18, height:18, display:"flex", alignItems:"center",
+                          justifyContent:"center", fontSize:10
+                        }}>💎</div>
                       </div>
                     </div>
                   );
@@ -2210,7 +2189,7 @@ function App() {
               </div>
             </div>
           </div>
-        );
+        </>);
       })()}
 
       <DepositModal
