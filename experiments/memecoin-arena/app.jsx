@@ -2144,16 +2144,16 @@ function App() {
 
               {/* Card grid — exact meme.com farm card replica */}
               <div style={{
-                display:"flex", flexWrap:"wrap", gap:16, justifyContent:"center"
+                display:"flex", flexWrap:"wrap", gap:12, justifyContent:"center"
               }}>
                 {holdings.map(h => {
                   const [f1,f2] = tierFrame[h.tier];
                   const [dfOuter,dfInner] = tierDiamond[h.tier];
-                  const sz = 88; // coin card size in px
-                  const bw = 3;  // border width
-                  const br = 7;  // border radius
-                  const ibr = 5; // inner border radius
-                  const ibw = 2; // inner border width
+                  const sz = 62; // coin card size in px
+                  const bw = 2;  // border width
+                  const br = 5;  // border radius
+                  const ibr = 4; // inner border radius
+                  const ibw = 1; // inner border width
                   return (
                     <div key={h.sym} style={{
                       display:"flex", flexDirection:"column", alignItems:"center",
@@ -2188,7 +2188,7 @@ function App() {
                       </div>
                       {/* Diamond frame (trapezoid tab) */}
                       <div style={{
-                        width:sz, height:22, position:"relative",
+                        width:sz, height:16, position:"relative",
                         clipPath:"polygon(10% 0%, 10% 60%, 20% 100%, 80% 100%, 90% 60%, 90% 0%)",
                         background:dfOuter,
                         display:"flex", justifyContent:"center", alignItems:"center"
@@ -2199,9 +2199,15 @@ function App() {
                           clipPath:`polygon(calc(10% + ${bw}px) 0%, calc(10% + ${bw}px) calc(60% - ${bw/2}px), calc(20% + ${bw/2}px) calc(100% - ${bw}px), calc(80% - ${bw/2}px) calc(100% - ${bw}px), calc(90% - ${bw}px) calc(60% - ${bw/2}px), calc(90% - ${bw}px) 0%)`,
                           background:dfInner
                         }}/>
-                        {/* Diamond icon */}
-                        <svg width="16" height="11" viewBox="0 0 65 43" fill="none" style={{ zIndex:1, marginBottom:1 }}>
-                          <polygon points="13,0 52,0 65,16 32.5,43 0,16" fill="white"/>
+                        {/* Diamond gem icon */}
+                        <svg width="12" height="10" viewBox="0 0 24 20" fill="none" style={{ zIndex:1, marginBottom:1 }}>
+                          <path d="M4.8 0.5H19.2L23.5 7L12 19.5L0.5 7L4.8 0.5Z" fill="white" stroke="white" strokeWidth="0.5"/>
+                          <path d="M4.8 0.5L8 7H0.5L4.8 0.5Z" fill="rgba(255,255,255,0.7)"/>
+                          <path d="M19.2 0.5L23.5 7H16L19.2 0.5Z" fill="rgba(255,255,255,0.7)"/>
+                          <path d="M8 7L12 0.5L16 7H8Z" fill="rgba(255,255,255,0.85)"/>
+                          <path d="M8 7L12 19.5L0.5 7H8Z" fill="rgba(255,255,255,0.75)"/>
+                          <path d="M16 7L12 19.5L23.5 7H16Z" fill="rgba(255,255,255,0.65)"/>
+                          <path d="M8 7H16L12 19.5L8 7Z" fill="white"/>
                         </svg>
                       </div>
                     </div>
