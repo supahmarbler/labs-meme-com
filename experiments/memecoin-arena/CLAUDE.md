@@ -238,9 +238,38 @@ curl -s -X POST "https://api.supabase.com/v1/projects/csvegolcvwuwssoefxdh/datab
 - **Supabase CLI**: installed (`/opt/homebrew/bin/supabase`), project linked. Needs `SUPABASE_ACCESS_TOKEN` env var.
 - **Service role key**: stored in conversation history (use for REST API calls bypassing RLS)
 
-### Current DB State (end of session)
+### Current DB State (end of 2026-02-27 session)
 - 4 OPEN markets: JOE-30, MOG-29, PEPE-29, STNK-30 (expiring 2026-02-28T13:59:59 UTC)
 - All test data cleared (resolved markets, old positions, trades)
 - All user stats reset to 0 (clean slate for first real 24h round)
 - ~42 active positions from real users across all 4 markets
 - Stale browser tab fully neutralized (triggers + constraint + code filters)
+
+## Session Notes (2026-02-28)
+
+### Dev Environment Setup
+- **Dev Supabase project created**: `vnteehkwrygodkljfwyp` (memelabs-dev, eu-west-1)
+- **Full prod schema cloned to dev** via Management API: all tables (text user IDs), LMSR functions, `labs_buy`/`labs_sell` (SECURITY DEFINER), `labs_auto_resolve`, all 5 triggers (`protect_start_mc`, `prevent_duplicate_open`, `enforce_market_expiry`, `protect_balance_trigger`, `protect_stats_reset`), CHECK constraints (`valid_market_expiry`, `positive_balance`, `positive_shares`, `positive_invested`), RLS policies, indexes, leaderboard view
+- **Hostname-based env toggle** in `app.jsx` (line ~15): `labs.meme.com` → prod, everything else → dev
+- **Red "DEV" badge** in header when not on prod
+- **Verified**: prod still serving ~200 players across 4 markets, dev DB empty and functional (`labs_buy`/`labs_sell` RPCs tested end-to-end)
+- **Supabase access token**: `sbp_34192034a202b013e51e00c353c372e623a5b22a` (used for Management API queries against both projects)
+
+### Dev Environment Usage
+```bash
+# Query dev DB via Management API
+curl -s -X POST "https://api.supabase.com/v1/projects/vnteehkwrygodkljfwyp/database/query" \
+  -H "Authorization: Bearer sbp_34192034a202b013e51e00c353c372e623a5b22a" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT 1;"}'
+
+# Dev REST API
+curl -s "https://vnteehkwrygodkljfwyp.supabase.co/rest/v1/labs_markets?select=*" \
+  -H "apikey: sb_publishable_q_M1tOOvwhHnt4x2mgZH8Q_L3FQwgXn" \
+  -H "Authorization: Bearer sb_publishable_q_M1tOOvwhHnt4x2mgZH8Q_L3FQwgXn"
+```
+
+### Deployment
+- `vercel --prod` deploys both prod and preview environments from same code
+- Prod (`labs.meme.com`) → prod Supabase automatically
+- Any preview URL (`labs-meme-*.vercel.app`) or `localhost` → dev Supabase automatically

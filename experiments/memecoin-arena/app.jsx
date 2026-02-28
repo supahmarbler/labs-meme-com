@@ -963,6 +963,31 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
           display:"flex", alignItems:"flex-start", gap:12, marginBottom:10,
           flexWrap:"wrap"
         }}>
+          {pos && !pos.claimed && (
+            <>
+              <div style={{ whiteSpace:"nowrap" }}>
+                <div style={{
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
+                  color:"#ffffff40", marginBottom:2
+                }}>YOUR BET</div>
+                <div style={{
+                  display:"flex", alignItems:"center", gap:4,
+                  fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em"
+                }}>
+                  <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
+                    {rf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
+                  </span>
+                  <span style={{
+                    fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
+                    color: pnl>=0 ? "#4ade80" : "#f65e5e"
+                  }}>
+                    {pnl>=0 ? "▲" : "▼"} {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
+            </>
+          )}
           <div style={{ whiteSpace:"nowrap" }}>
             <div style={{
               fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
@@ -985,12 +1010,13 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
             }}>
               <span style={{
                 ...gld,
-                transition:"transform 0.3s ease",
-                transform: priceFlash ? "scale(1.15)" : "scale(1)",
+                transition:"transform 0.3s ease, opacity 0.3s ease",
+                transform: priceFlash === "up" ? "scale(1.15)" : "scale(1)",
+                opacity: priceFlash === "down" ? 0.6 : 1,
                 display:"inline-block"
               }}>{fM(m.mc)}</span>
               <span style={{
-                fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
+                fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
                 color: priceFlash === "up" ? "#4ade80" : priceFlash === "down" ? "#f65e5e" : isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40",
                 transition:"color 0.3s ease",
                 animation: priceFlash ? "priceFlash 1.2s ease-out" : undefined
@@ -999,31 +1025,6 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
               </span>
             </div>
           </div>
-          {pos && !pos.claimed && (
-            <>
-              <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
-              <div style={{ whiteSpace:"nowrap" }}>
-                <div style={{
-                  fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
-                  color:"#ffffff40", marginBottom:2
-                }}>YOUR BET</div>
-                <div style={{
-                  display:"flex", alignItems:"center", gap:4,
-                  fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em"
-                }}>
-                  <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
-                    {rf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
-                  </span>
-                  <span style={{
-                    fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
-                    color: pnl>=0 ? "#4ade80" : "#f65e5e"
-                  }}>
-                    {pnl>=0 ? "▲" : "▼"} {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
@@ -1146,7 +1147,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
 
       <div style={{
         display:"flex", alignItems:"center", marginTop:10,
-        padding:"0 16px", justifyContent:"space-between"
+        padding:"0 16px 0 14px", justifyContent:"space-between"
       }}>
         <div style={{ display:"flex", alignItems:"center", fontSize:".75em", gap:8 }}>
           {players.length > 0 && marketPool(m.qY, m.qN, m.b) > 0 && (
@@ -1169,7 +1170,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
           )}
         </div>
         {marketPool(m.qY, m.qN, m.b) > 0 && <span style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".85em" }}>
-          <span style={{ color:"#ffffff30", marginRight:4 }}>POOL</span>
+          <span style={{ color:"#ffffff30", marginRight:4 }}></span>
           <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
         </span>}
       </div>
@@ -1196,6 +1197,7 @@ function App() {
   const [authToken, setAuthToken] = useState(null);
   const [memescore, setMemescore] = useState(0);
   const [showDeposit, setShowDeposit] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
   const [marketHistory, setMarketHistory] = useState([]);
 
@@ -1720,7 +1722,10 @@ function App() {
       if (m.st === "RES" && (!pos[m.id] || pos[m.id].claimed)) return false; // hide claimed/no-position RES
       return true;
     });
-    return filtered.sort((a,b) => yP(b.qY, b.qN, b.b) - yP(a.qY, a.qN, a.b));
+    const allRekt = filtered.length > 0 && filtered.every(m => yP(m.qY, m.qN, m.b) < 25);
+    return filtered.sort((a,b) => allRekt
+      ? yP(a.qY, a.qN, a.b) - yP(b.qY, b.qN, b.b)
+      : yP(b.qY, b.qN, b.b) - yP(a.qY, a.qN, a.b));
   }, [mks, pos]);
 
   if (loading) {
@@ -1802,20 +1807,24 @@ function App() {
               color:"#fff"
             }}>DEPOSIT</span>
           </button>
-          <div style={{
-            width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius: "50%", overflow:"hidden",
-            background:"linear-gradient(135deg,#71BAFF,#4023C3)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize: isMobile ? 12 : 14, fontWeight:700, flexShrink:0
+          <div onClick={() => setShowProfile(true)} style={{
+            display:"flex", alignItems:"center", gap: isMobile ? 6 : 10, cursor:"pointer"
           }}>
-            {memeUser?.image
-              ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-              : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
-            }
+            <div style={{
+              width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius: "50%", overflow:"hidden",
+              background:"linear-gradient(135deg,#71BAFF,#4023C3)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize: isMobile ? 12 : 14, fontWeight:700, flexShrink:0
+            }}>
+              {memeUser?.image
+                ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
+              }
+            </div>
+            {!isMobile && <span style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
+            }}>{memeUser?.username || "Guest"}</span>}
           </div>
-          {!isMobile && <span style={{
-            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em"
-          }}>{memeUser?.username || "Guest"}</span>}
         </div>
       </div>
 
@@ -1878,9 +1887,9 @@ function App() {
                 borderBottom:"1px solid #ffffff0d",
                 display:"flex", alignItems:"center"
               }}>
-                <span style={{ flex:1 }}>CONVICTION BOARD</span>
+                <span style={{ flex:1, ...(ranked.length > 0 && ranked.every(m => yP(m.qY,m.qN,m.b) < 25) ? { color:"#f65e5e" } : {}) }}>{ranked.length > 0 && ranked.every(m => yP(m.qY,m.qN,m.b) < 25) ? "REKT BOARD" : "CONVICTION BOARD"}</span>
                 <div style={{ display:"flex", fontFamily:"'Jersey 25',sans-serif", fontSize:".6em", color:"#ffffff30", textTransform:"uppercase" }}>
-                  <span style={{ width:80, textAlign:"right", paddingRight:10 }}>streak</span>
+                  <span style={{ width:80, textAlign:"center" }}>streak</span>
                   <span style={{ width:50, textAlign:"right" }}>pool</span>
                 </div>
               </div>
@@ -1905,11 +1914,11 @@ function App() {
                     }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none" }}>${m.c.sym}</a></div>
                     <div style={{
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
-                      color:"#ffffff50"
+                      color: ranked.length > 0 && ranked.every(r => yP(r.qY,r.qN,r.b) < 25) ? "#f65e5e" : "#ffffff50"
                     }}>{yP(m.qY,m.qN,m.b)}% on UP</div>
                   </div>
                   {coinForm.length > 0 && (
-                    <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"flex-end", width:80 }}>
+                    <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", width:80, marginRight:-13 }}>
                       {coinForm.map((h,j) => (
                         <div key={j} style={{
                           width:14, height:14, borderRadius:"50%",
@@ -1969,45 +1978,59 @@ function App() {
                     img: u.profile_image,
                     isCurrentUser: false
                   }));
-                return [...leaders, currentUser].sort((a,b) => b.profit - a.profit).slice(0,5);
-              })().map((p,i) => (
-                <div key={p.id || i} style={{
-                  display:"flex", alignItems:"center", gap:10,
-                  padding:"10px 16px", background:"#191f29",
-                  borderBottom:"1px solid #ffffff08"
-                }}>
-                  <span style={{
-                    fontFamily:"'Jersey 25',sans-serif", minWidth:28,
-                    color:["#f7931a","#94a3b8","#b45309"][i] || "#ffffff40"
-                  }}>#{i+1}</span>
-                  <div style={{
-                    width:26, height:26, borderRadius:13, overflow:"hidden",
-                    background: p.isCurrentUser ? "linear-gradient(135deg,#71BAFF,#4023C3)" : "#333",
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:12, fontWeight:700, flexShrink:0
+                const sorted = [...leaders, currentUser].sort((a,b) => b.profit - a.profit);
+                const top5 = sorted.slice(0, 5);
+                const playerInTop5 = top5.some(p => p.isCurrentUser);
+                const playerRank = sorted.findIndex(p => p.isCurrentUser) + 1;
+
+                const renderRow = (p, rank, showRank = true, compact = false) => (
+                  <div key={p.id || rank} style={{
+                    display:"flex", alignItems:"center", gap:10,
+                    padding: compact ? "5px 16px 10px" : "10px 16px", background:"#191f29",
+                    borderBottom:"1px solid #ffffff08"
                   }}>
-                    {p.img
-                      ? <img src={p.img} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}
-                          onError={e => { e.target.style.display="none"; }}/>
-                      : <span>{p.name[0]}</span>
-                    }
-                  </div>
-                  <div style={{ flex:1 }}>
+                    <span style={{
+                      fontFamily:"'Jersey 25',sans-serif", minWidth:28,
+                      color:["#f7931a","#94a3b8","#b45309"][rank-1] || "#ffffff40",
+                      visibility: showRank ? "visible" : "hidden"
+                    }}>{showRank ? `#${rank}` : "#"}</span>
                     <div style={{
-                      fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
-                      color: p.isCurrentUser ? "#71BAFF" : "#fff"
-                    }}>{p.name}</div>
+                      width:26, height:26, borderRadius:13, overflow:"hidden",
+                      background: p.isCurrentUser ? "linear-gradient(135deg,#71BAFF,#4023C3)" : "#333",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:12, fontWeight:700, flexShrink:0
+                    }}>
+                      {p.img
+                        ? <img src={p.img} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}
+                            onError={e => { e.target.style.display="none"; }}/>
+                        : <span>{p.name[0]}</span>
+                      }
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{
+                        fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
+                        color: p.isCurrentUser ? "#71BAFF" : "#fff"
+                      }}>{p.name}</div>
+                    </div>
                     <div style={{
-                      fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
-                      color:"#ffffff50"
-                    }}>{p.w}W {p.l}L</div>
+                      fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
+                      color: p.profit >= 0 ? "#4ade80" : "#f65e5e"
+                    }}>{p.profit >= 0 ? "+" : ""}{p.profit.toLocaleString()}</div>
                   </div>
-                  <div style={{
-                    fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
-                    color: p.profit >= 0 ? "#4ade80" : "#f65e5e"
-                  }}>{p.profit >= 0 ? "+" : ""}{p.profit.toLocaleString()}</div>
-                </div>
-              ))}
+                );
+
+                return (<>
+                  {top5.map((p, i) => renderRow(p, i + 1))}
+                  {!playerInTop5 && (<>
+                    <div style={{
+                      padding:"0 16px", background:"#191f29",
+                      textAlign:"center", fontFamily:"'Jersey 25',sans-serif",
+                      fontSize:".7em", color:"#ffffff30", letterSpacing:4
+                    }}>...</div>
+                    {renderRow(currentUser, playerRank, false, true)}
+                  </>)}
+                </>);
+              })()}
             </div>
 
             {hist.length > 0 && (
@@ -2043,6 +2066,123 @@ function App() {
           </div>
         </div>
       </div>
+
+      {showProfile && (() => {
+        const holdings = [
+          { sym:"PEPE", tier:"gold", img:"https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png", color:"#4ADE80" },
+          { sym:"DOGE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2024-04-09/1712630400000DOGE.png", color:"#C2A633" },
+          { sym:"JOE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png", color:"#f7931a" },
+          { sym:"PENGU", tier:"bronze", img:"https://cdn.meme.com/images/meme_assets/2024-12-17/1734393600000PNGU.png", color:"#71BAFF" },
+        ];
+        const tierColors = { gold:"#f7931a", silver:"#94a3b8", bronze:"#b45309" };
+        const tierLabels = { gold:"GOLD", silver:"SILVER", bronze:"BRONZE" };
+        return (
+          <div onClick={() => setShowProfile(false)} style={{
+            position:"fixed", inset:0, background:"rgba(0,0,0,0.85)",
+            backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)",
+            display:"flex", alignItems:"center", justifyContent:"center", zIndex:100
+          }}>
+            <div onClick={e => e.stopPropagation()} style={{
+              background:"linear-gradient(180deg,#1a2332,#0c1018)",
+              borderRadius:20, padding: isMobile ? "20px 16px 24px" : "28px 32px 32px",
+              width: isMobile ? "92%" : "auto", maxWidth:680, minWidth: isMobile ? "auto" : 420,
+              border:"1px solid #ffffff15", position:"relative"
+            }}>
+              {/* Close button */}
+              <button onClick={() => setShowProfile(false)} style={{
+                position:"absolute", top:14, right:16, background:"none", border:"none",
+                color:"#ffffff60", fontSize:"1.3em", cursor:"pointer", padding:4,
+                fontFamily:"'Jersey 25',sans-serif"
+              }}>X</button>
+
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+                <div style={{
+                  width:52, height:52, borderRadius:"50%", overflow:"hidden",
+                  background:"linear-gradient(135deg,#71BAFF,#4023C3)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:20, fontWeight:700, flexShrink:0
+                }}>
+                  {memeUser?.image
+                    ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                    : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
+                  }
+                </div>
+                <div>
+                  <div style={{
+                    fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.4em"
+                  }}>{memeUser?.username || "Guest"}</div>
+                  <div style={{ display:"flex", gap:16, marginTop:2 }}>
+                    <span style={{
+                      fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", color:"#ffffff60"
+                    }}>MEMESCORE: <span style={gld}>{memescore.toLocaleString()}</span></span>
+                    <span style={{
+                      fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", color:"#ffffff60"
+                    }}>STREAK: <span style={{ color:"#f7931a" }}>{streak}</span></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ height:1, background:"#ffffff10", margin:"0 0 20px" }}/>
+
+              {/* Inventory label */}
+              <div style={{
+                fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
+                color:"#ffffff40", letterSpacing:2, marginBottom:14
+              }}>MEME INVENTORY</div>
+
+              {/* Card grid */}
+              <div style={{
+                display:"grid",
+                gridTemplateColumns:"repeat(auto-fill, minmax(110px, 1fr))",
+                gap:12
+              }}>
+                {holdings.map(h => (
+                  <div key={h.sym} style={{
+                    background:"linear-gradient(180deg,#1e2a3a,#141c28)",
+                    border:`2px solid ${tierColors[h.tier]}`,
+                    borderRadius:14, overflow:"hidden", cursor:"default",
+                    transition:"transform 0.2s ease, box-shadow 0.2s ease"
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow=`0 6px 20px ${tierColors[h.tier]}44`; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="none"; }}
+                  >
+                    {/* Tier badge */}
+                    <div style={{ position:"relative" }}>
+                      <span style={{
+                        position:"absolute", top:6, right:6, fontSize:".55em",
+                        fontFamily:"'Jersey 25',sans-serif",
+                        background:tierColors[h.tier]+"33", color:tierColors[h.tier],
+                        padding:"1px 6px", borderRadius:4, letterSpacing:1
+                      }}>{tierLabels[h.tier]}</span>
+                    </div>
+                    {/* Coin image */}
+                    <div style={{
+                      padding:"16px 12px 10px", display:"flex", justifyContent:"center"
+                    }}>
+                      <CoinImg src={h.img} color={h.color} size={64} sym={h.sym}/>
+                    </div>
+                    {/* Footer */}
+                    <div style={{
+                      background:tierColors[h.tier]+"18",
+                      borderTop:`1px solid ${tierColors[h.tier]}33`,
+                      padding:"6px 10px", display:"flex", alignItems:"center",
+                      justifyContent:"space-between"
+                    }}>
+                      <span style={{
+                        fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
+                        color:tierColors[h.tier]
+                      }}>${h.sym}</span>
+                      <span style={{ fontSize:".7em" }}>💎</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <DepositModal
         isOpen={showDeposit}
