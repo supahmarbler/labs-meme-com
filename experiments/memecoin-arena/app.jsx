@@ -2199,16 +2199,10 @@ function App() {
                           clipPath:`polygon(calc(10% + ${bw}px) 0%, calc(10% + ${bw}px) calc(60% - ${bw/2}px), calc(20% + ${bw/2}px) calc(100% - ${bw}px), calc(80% - ${bw/2}px) calc(100% - ${bw}px), calc(90% - ${bw}px) calc(60% - ${bw/2}px), calc(90% - ${bw}px) 0%)`,
                           background:dfInner
                         }}/>
-                        {/* Diamond gem icon */}
-                        <svg width="12" height="10" viewBox="0 0 24 20" fill="none" style={{ zIndex:1, marginBottom:1 }}>
-                          <path d="M4.8 0.5H19.2L23.5 7L12 19.5L0.5 7L4.8 0.5Z" fill="white" stroke="white" strokeWidth="0.5"/>
-                          <path d="M4.8 0.5L8 7H0.5L4.8 0.5Z" fill="rgba(255,255,255,0.7)"/>
-                          <path d="M19.2 0.5L23.5 7H16L19.2 0.5Z" fill="rgba(255,255,255,0.7)"/>
-                          <path d="M8 7L12 0.5L16 7H8Z" fill="rgba(255,255,255,0.85)"/>
-                          <path d="M8 7L12 19.5L0.5 7H8Z" fill="rgba(255,255,255,0.75)"/>
-                          <path d="M16 7L12 19.5L23.5 7H16Z" fill="rgba(255,255,255,0.65)"/>
-                          <path d="M8 7H16L12 19.5L8 7Z" fill="white"/>
-                        </svg>
+                        {/* Diamond icon — exact meme.com asset */}
+                        <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
+                          width:14, height:9, zIndex:1, marginBottom:1
+                        }}/>
                       </div>
                     </div>
                   );
