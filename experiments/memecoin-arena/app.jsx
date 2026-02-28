@@ -2069,10 +2069,10 @@ function App() {
 
       {showProfile && (() => {
         const holdings = [
-          { sym:"PEPE", tier:"gold", img:"https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png", color:"#4ADE80" },
-          { sym:"DOGE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2024-04-09/1712630400000DOGE.png", color:"#C2A633" },
-          { sym:"JOE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png", color:"#f7931a" },
-          { sym:"PENGU", tier:"bronze", img:"https://cdn.meme.com/images/meme_assets/2024-12-17/1734393600000PNGU.png", color:"#71BAFF" },
+          { sym:"PEPE", tier:"gold", img:"https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png" },
+          { sym:"DOGE", tier:"silver", img:"https://cdn.meme.com/images-4/meme_assets/2024-11-08/1731078819010sFOw.png" },
+          { sym:"JOE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
+          { sym:"PENGU", tier:"bronze", img:"https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
         ];
         const tierColors = { gold:"#f7931a", silver:"#94a3b8", bronze:"#b45309" };
         const tierLabels = { gold:"GOLD", silver:"SILVER", bronze:"BRONZE" };
