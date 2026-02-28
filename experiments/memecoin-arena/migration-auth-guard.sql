@@ -1,149 +1,24 @@
--- Production Migration for Memecoin Arena
+-- Migration: Add authentication guard to labs_buy and labs_sell
+-- Rejects any user_id that doesn't start with 'meme-' (i.e. not logged in via meme.com)
 -- Run this in Supabase SQL Editor
--- This adds constraints, indexes, and atomic functions for handling concurrent users
+--
+-- PREREQUISITE: labs_users.id must be text type (not uuid) to support 'meme-{id}' format.
+-- If not already done, run:
+--   ALTER TABLE labs_users ALTER COLUMN id TYPE text;
+-- (and update foreign keys on labs_positions, labs_trades accordingly)
 
 -- ============================================================
--- 1. ADD CONSTRAINTS (safe to run multiple times with IF NOT EXISTS pattern)
+-- 0. DROP OLD uuid-parameter OVERLOADS (if they exist)
 -- ============================================================
-
--- Ensure positive balances
-DO $$ BEGIN
-  ALTER TABLE labs_users ADD CONSTRAINT positive_balance CHECK (labs_balance >= 0);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
--- Ensure positive shares in positions
-DO $$ BEGIN
-  ALTER TABLE labs_positions ADD CONSTRAINT positive_shares CHECK (shares > 0);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
--- Ensure positive investment
-DO $$ BEGIN
-  ALTER TABLE labs_positions ADD CONSTRAINT positive_invested CHECK (invested > 0);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+DROP FUNCTION IF EXISTS labs_buy(uuid, text, text, int);
+DROP FUNCTION IF EXISTS labs_sell(uuid, text);
 
 -- ============================================================
--- 2. ADD PERFORMANCE INDEXES
--- ============================================================
-
-CREATE INDEX IF NOT EXISTS idx_markets_expires ON labs_markets(expires_at);
-CREATE INDEX IF NOT EXISTS idx_markets_status_expires ON labs_markets(status, expires_at);
-CREATE INDEX IF NOT EXISTS idx_positions_market ON labs_positions(market_id);
-CREATE INDEX IF NOT EXISTS idx_trades_user_created ON labs_trades(user_id, created_at DESC);
-
--- ============================================================
--- 3. LMSR HELPER FUNCTIONS
--- ============================================================
-
--- Cost function: C(qY, qN, B) = B * (m + ln(exp(qY/B - m) + exp(qN/B - m)))
--- where m = max(qY, qN) / B
-CREATE OR REPLACE FUNCTION lmsr_cost(q_yes numeric, q_no numeric, b numeric)
-RETURNS numeric AS $$
-DECLARE
-  m numeric;
-BEGIN
-  m := GREATEST(q_yes, q_no) / b;
-  RETURN b * (m + LN(EXP(q_yes/b - m) + EXP(q_no/b - m)));
-END;
-$$ LANGUAGE plpgsql IMMUTABLE;
-
--- Calculate shares for a given cost using binary search
-CREATE OR REPLACE FUNCTION lmsr_buy_shares(
-  q_yes numeric,
-  q_no numeric,
-  b numeric,
-  cost numeric,
-  side text
-) RETURNS numeric AS $$
-DECLARE
-  old_cost numeric;
-  m numeric;
-  e_yes numeric;
-  e_no numeric;
-  p numeric;
-  lo numeric := 0;
-  hi numeric;
-  mid numeric;
-  new_q_yes numeric;
-  new_q_no numeric;
-  new_cost numeric;
-  i int;
-BEGIN
-  IF cost <= 0 THEN RETURN 0; END IF;
-
-  old_cost := lmsr_cost(q_yes, q_no, b);
-
-  -- Compute proper upper bound based on current share price
-  m := GREATEST(q_yes, q_no) / b;
-  e_yes := EXP(q_yes/b - m);
-  e_no := EXP(q_no/b - m);
-  IF side = 'YES' THEN
-    p := e_yes / (e_yes + e_no);
-  ELSE
-    p := e_no / (e_yes + e_no);
-  END IF;
-  hi := GREATEST(cost * 2, cost / GREATEST(p, 0.01) * 2);
-
-  FOR i IN 1..60 LOOP
-    mid := (lo + hi) / 2;
-    IF side = 'YES' THEN
-      new_q_yes := q_yes + mid;
-      new_q_no := q_no;
-    ELSE
-      new_q_yes := q_yes;
-      new_q_no := q_no + mid;
-    END IF;
-    new_cost := lmsr_cost(new_q_yes, new_q_no, b);
-    IF new_cost - old_cost < cost THEN
-      lo := mid;
-    ELSE
-      hi := mid;
-    END IF;
-  END LOOP;
-
-  RETURN ROUND((lo + hi) / 2);
-END;
-$$ LANGUAGE plpgsql IMMUTABLE;
-
--- Calculate refund for selling shares
-CREATE OR REPLACE FUNCTION lmsr_sell_refund(
-  q_yes numeric,
-  q_no numeric,
-  b numeric,
-  shares numeric,
-  side text
-) RETURNS numeric AS $$
-DECLARE
-  old_cost numeric;
-  new_q_yes numeric;
-  new_q_no numeric;
-  new_cost numeric;
-BEGIN
-  IF shares <= 0 THEN RETURN 0; END IF;
-
-  old_cost := lmsr_cost(q_yes, q_no, b);
-
-  IF side = 'YES' THEN
-    new_q_yes := GREATEST(0, q_yes - shares);
-    new_q_no := q_no;
-  ELSE
-    new_q_yes := q_yes;
-    new_q_no := GREATEST(0, q_no - shares);
-  END IF;
-
-  new_cost := lmsr_cost(new_q_yes, new_q_no, b);
-  RETURN GREATEST(0, ROUND(old_cost - new_cost));
-END;
-$$ LANGUAGE plpgsql IMMUTABLE;
-
--- ============================================================
--- 4. ATOMIC BUY FUNCTION
+-- 1. UPDATE labs_buy TO REQUIRE meme- PREFIX
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION labs_buy(
-  p_user_id uuid,
+  p_user_id text,
   p_market_id text,
   p_side text,
   p_amount int
@@ -157,6 +32,11 @@ DECLARE
   v_new_q_no numeric;
   v_is_new_player boolean;
 BEGIN
+  -- Authentication check: reject non-meme.com users
+  IF NOT p_user_id LIKE 'meme-%' THEN
+    RETURN json_build_object('success', false, 'error', 'Authentication required');
+  END IF;
+
   -- Validate inputs
   IF p_side NOT IN ('YES', 'NO') THEN
     RETURN json_build_object('success', false, 'error', 'invalid_side');
@@ -265,11 +145,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
--- 5. ATOMIC SELL FUNCTION
+-- 2. UPDATE labs_sell TO REQUIRE meme- PREFIX
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION labs_sell(
-  p_user_id uuid,
+  p_user_id text,
   p_market_id text
 ) RETURNS json AS $$
 DECLARE
@@ -280,6 +160,11 @@ DECLARE
   v_new_q_no numeric;
   v_pnl int;
 BEGIN
+  -- Authentication check: reject non-meme.com users
+  IF NOT p_user_id LIKE 'meme-%' THEN
+    RETURN json_build_object('success', false, 'error', 'Authentication required');
+  END IF;
+
   -- Lock and get market
   SELECT * INTO v_market FROM labs_markets
   WHERE id = p_market_id FOR UPDATE;
@@ -354,17 +239,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
--- 6. GRANT EXECUTE PERMISSIONS
+-- 3. RE-GRANT PERMISSIONS
 -- ============================================================
 
-GRANT EXECUTE ON FUNCTION lmsr_cost TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION lmsr_buy_shares TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION lmsr_sell_refund TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION labs_buy TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION labs_sell TO anon, authenticated;
-
--- ============================================================
--- Done! The frontend can now call:
--- supabase.rpc('labs_buy', { p_user_id, p_market_id, p_side, p_amount })
--- supabase.rpc('labs_sell', { p_user_id, p_market_id })
--- ============================================================
+GRANT EXECUTE ON FUNCTION labs_buy(text, text, text, int) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION labs_sell(text, text) TO anon, authenticated;

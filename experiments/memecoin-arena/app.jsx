@@ -11,34 +11,43 @@ const useIsMobile = () => {
   return isMobile;
 };
 
-// Supabase client
-const SUPABASE_URL = "https://csvegolcvwuwssoefxdh.supabase.co";
-const SUPABASE_KEY = "sb_publishable_Qf1O75YbEeBE2qwg4ThmwA_Uxpw9BG4";
+// Supabase client — prod on labs.meme.com, dev everywhere else
+const isProd = window.location.hostname === "labs.meme.com";
+const SUPABASE_URL = isProd
+  ? "https://csvegolcvwuwssoefxdh.supabase.co"
+  : "https://vnteehkwrygodkljfwyp.supabase.co";
+const SUPABASE_KEY = isProd
+  ? "sb_publishable_Qf1O75YbEeBE2qwg4ThmwA_Uxpw9BG4"
+  : "sb_publishable_q_M1tOOvwhHnt4x2mgZH8Q_L3FQwgXn";
 const supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // meme.com API base
-const MEME_API = "https://api.meme.com/api/v1";
+const MEME_API = "https://api.v2.meme.com";
 
-// Check if meme.com auth token is valid
+// Read meme.com auth token: cookie first, localStorage fallback
 const getMemeAuth = () => {
   try {
-    const token = localStorage.getItem("auth_token");
-    const timestamp = localStorage.getItem("auth_timestamp");
-    if (!token || !timestamp) return null;
-
-    // Check if token is expired (with 60s buffer)
-    const expiresAt = parseInt(timestamp) * 1000;
-    if (Date.now() > expiresAt - 60000) return null;
-
-    return {
-      token,
-      walletAddress: localStorage.getItem("auth_wallet_address"),
-      walletType: localStorage.getItem("auth_wallet_type")
-    };
+    // Try cookie first (fresh from meme.com)
+    const cookies = document.cookie.split("; ");
+    const authCookie = cookies.find(c => c.startsWith("meme_auth_account="));
+    if (authCookie) {
+      const token = decodeURIComponent(authCookie.substring(authCookie.indexOf("=") + 1));
+      if (token) {
+        // Cache to localStorage so it survives cookie expiry
+        localStorage.setItem("labs_auth_token", token);
+        return { token };
+      }
+    }
+    // Fallback to cached token
+    const cached = localStorage.getItem("labs_auth_token");
+    return cached ? { token: cached } : null;
   } catch (e) {
-    console.log("Auth check failed:", e);
     return null;
   }
+};
+
+const clearCachedAuth = () => {
+  try { localStorage.removeItem("labs_auth_token"); } catch (e) {}
 };
 
 // Fetch user profile from meme.com API
@@ -50,28 +59,13 @@ const fetchMemeUser = async (authToken) => {
     if (!res.ok) return null;
     const data = await res.json();
     return {
-      id: data.userId,
+      id: data.user_id,
       username: data.username,
-      image: data.profileImageUrl
+      image: data.profile_image_url
     };
   } catch (e) {
     console.log("Failed to fetch meme user:", e);
     return null;
-  }
-};
-
-// Fetch memescore from meme.com API
-const fetchMemescore = async (authToken, userId) => {
-  try {
-    const res = await fetch(`${MEME_API}/farm/user_balance?meme_user_id=${userId}`, {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    });
-    if (!res.ok) return 0;
-    const data = await res.json();
-    return Math.floor(data.memescore || 0);
-  } catch (e) {
-    console.log("Failed to fetch memescore:", e);
-    return 0;
   }
 };
 
@@ -125,24 +119,30 @@ const saveState = (state) => {
   } catch (e) { console.error("Save failed:", e); }
 };
 
-// Supabase market sync with retry
+// Supabase market sync with retry (upsert to handle new rounds)
 const syncMarketToDb = async (m, retries = 2) => {
   if (!supabase) return false;
   try {
-    // Store user trades only (subtract base liquidity which equals B)
     const payload = {
+      id: m.id,
+      coin_symbol: m.c.sym,
+      coin_name: m.c.name,
+      coin_image: m.c.img,
+      coin_color: m.c.color,
+      current_mc: m.mc,
+      b: m.b,
       q_yes: Math.max(0, m.qY - m.b),
       q_no: Math.max(0, m.qN - m.b),
-      current_mc: m.mc,
       status: m.st,
       result: m.res,
       volume: m.vol,
-      players: m.ppl
+      players: m.ppl,
+      expires_at: new Date(m.ea).toISOString(),
+      price_updated_at: new Date().toISOString()
     };
     const { error } = await supabase
       .from("labs_markets")
-      .update(payload)
-      .eq("id", m.id);
+      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false });
     if (error) {
       console.error("Market sync error:", error, "market:", m.id, "payload:", payload);
       if (retries > 0) {
@@ -162,22 +162,26 @@ const syncMarketToDb = async (m, retries = 2) => {
   }
 };
 
-const loadMarketsFromDb = async () => {
+const loadMarketsFromDb = async (includeResolved = false) => {
   if (!supabase) return null;
   try {
-    const { data, error } = await supabase
-      .from("labs_markets")
-      .select("*")
-      .eq("status", "OPEN");
+    let query = supabase.from("labs_markets").select("*");
+    if (!includeResolved) query = query.eq("status", "OPEN");
+    const { data, error } = await query;
     if (error) throw error;
-    return data;
+    // Filter out stale 5-min markets — only keep OPEN or markets expiring at 13:xx UTC
+    return (data || []).filter(m => {
+      if (m.status === "OPEN") return true;
+      const h = new Date(m.expires_at).getUTCHours();
+      return h === 13;
+    });
   } catch (e) {
     console.error("Load markets failed:", e);
     return null;
   }
 };
 
-// Ensure user exists in database
+// Ensure user exists in database, update profile if available
 const ensureUserInDb = async (userId, memeUser) => {
   if (!supabase) return;
   try {
@@ -192,34 +196,38 @@ const ensureUserInDb = async (userId, memeUser) => {
         id: userId,
         username: memeUser?.username || null,
         profile_image: memeUser?.image || null,
-        labs_balance: 10000,
+        labs_balance: 0,
         total_volume: 0,
         wins: 0,
         losses: 0,
         current_streak: 0,
         best_streak: 0
       });
+    } else if (memeUser) {
+      // Update profile image and username from meme.com
+      await supabase.from("labs_users").update({
+        username: memeUser.username || null,
+        profile_image: memeUser.image || null
+      }).eq("id", userId);
     }
   } catch (e) {
-    // User might already exist, that's fine
     console.log("User check:", e.message);
   }
 };
 
-// Sync user stats to database
-const syncUserToDb = async (userId, bal, totalVolume, wins, losses, streak, bestStreak) => {
+// Sync user stats to database (balance is NOT synced here — only RPCs modify it)
+// Uses UPDATE (not upsert) so it can never accidentally create a row with labs_balance=0
+const syncUserToDb = async (userId, totalVolume, wins, losses, streak, bestStreak) => {
   if (!supabase) return;
   try {
-    await supabase.from("labs_users").upsert({
-      id: userId,
-      labs_balance: bal,
+    await supabase.from("labs_users").update({
       total_volume: totalVolume,
       wins: wins,
       losses: losses,
       current_streak: streak,
       best_streak: bestStreak,
       updated_at: new Date().toISOString()
-    });
+    }).eq("id", userId);
   } catch (e) { console.error("User sync failed:", e); }
 };
 
@@ -292,6 +300,31 @@ const loadPositionsFromDb = async (userId) => {
   }
 };
 
+// Load all market players with profile images (for avatar display)
+const loadMarketPlayersFromDb = async () => {
+  if (!supabase) return {};
+  try {
+    const { data, error } = await supabase
+      .from("labs_positions")
+      .select("market_id, user_id, invested, labs_users(profile_image)")
+      .order("invested", { ascending: false });
+    if (error) throw error;
+    const byMarket = {};
+    (data || []).forEach(p => {
+      if (!byMarket[p.market_id]) byMarket[p.market_id] = [];
+      byMarket[p.market_id].push({
+        userId: p.user_id,
+        img: p.labs_users?.profile_image || null,
+        inv: Number(p.invested)
+      });
+    });
+    return byMarket;
+  } catch (e) {
+    console.error("Market players load failed:", e);
+    return {};
+  }
+};
+
 // Record trade in database
 const recordTradeInDb = async (userId, marketId, coinSymbol, side, shares, amount, tradeType, result = null, pnl = null) => {
   if (!supabase) return;
@@ -316,9 +349,10 @@ const loadLeaderboardFromDb = async () => {
   try {
     const { data, error } = await supabase
       .from("labs_users")
-      .select("id, username, profile_image, total_volume, wins, losses, current_streak, created_at")
+      .select("id, username, profile_image, labs_balance, total_volume, total_profit, wins, losses, current_streak, created_at")
+      .not("username", "is", null)
       .gt("total_volume", 0)
-      .order("total_volume", { ascending: false })
+      .order("total_profit", { ascending: false })
       .limit(10);
     if (error) throw error;
     return data;
@@ -328,7 +362,7 @@ const loadLeaderboardFromDb = async () => {
   }
 };
 
-// Load recent market results (last 10 resolved)
+// Load recent market results (up to 5 per coin for form guide)
 const loadMarketHistoryFromDb = async () => {
   if (!supabase) return null;
   try {
@@ -337,13 +371,39 @@ const loadMarketHistoryFromDb = async () => {
       .select("id, coin_symbol, coin_image, coin_color, start_mc, current_mc, result, expires_at, volume")
       .eq("status", "RES")
       .order("expires_at", { ascending: false })
-      .limit(10);
+      .limit(30);
     if (error) throw error;
-    return data;
+    // Filter out stale 5-min test markets — only keep markets expiring at 13:xx UTC
+    return (data || []).filter(m => {
+      const h = new Date(m.expires_at).getUTCHours();
+      return h === 13;
+    });
   } catch (e) {
     console.error("History load failed:", e);
     return null;
   }
+};
+
+// Deduplicate: one OPEN market per coin, keep highest round. Keep all RES with positions.
+const dedup = (mks) => {
+  const openByCoin = {};
+  const result = [];
+  // First pass: find highest-round OPEN market per coin
+  mks.forEach(m => {
+    if (m.st === "OPEN") {
+      if (!openByCoin[m.c.sym] || m.rn > openByCoin[m.c.sym].rn) openByCoin[m.c.sym] = m;
+    }
+  });
+  // Second pass: keep RES markets + one OPEN per coin
+  const seen = new Set();
+  mks.forEach(m => {
+    if (m.st === "OPEN") {
+      if (openByCoin[m.c.sym]?.id === m.id && !seen.has(m.id)) { seen.add(m.id); result.push(m); }
+    } else {
+      if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
+    }
+  });
+  return result;
 };
 
 const dbMarketToLocal = (db, coinData) => {
@@ -375,27 +435,26 @@ const dbMarketToLocal = (db, coinData) => {
 
 // meme.com API (for initial coin data)
 const API_BASE = "https://api.v2.meme.com";
-const COIN_SYMBOLS = ["joe", "stnk", "pengu", "pepe", "mog", "dog"];
-const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pengu:"#38BDF8", pepe:"#4ADE80", mog:"#9333EA", dog:"#c2a633" };
+const COIN_SYMBOLS = ["joe", "stnk", "pepe", "mog"];
+const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pepe:"#4ADE80", mog:"#1e3a5f" };
 
-// CoinGecko for fast price updates
+// CoinGecko Pro for reliable price updates
+const CG_API = "https://api.coingecko.com/api/v3";
+const CG_HEADERS = {};
 const COINGECKO_IDS = {
   joe: "joe-coin",
   stnk: "stonks-4",
-  pengu: "pudgy-penguins",
   pepe: "pepe",
-  mog: "mog-coin",
-  dog: "the-doge-nft"
+  mog: "mog-coin"
 };
+const MEME_SLUGS = { JOE:"joe-coin", STNK:"stonks-4", PEPE:"pepe", MOG:"mog-coin" };
 
 // Fallback coin data when APIs are rate limited
 const FALLBACK_COINS = [
   { sym: "JOE", name: "Joe Coin", mcap: 7000000, color: "#f7931a", img: "https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
-  { sym: "STNK", name: "Stonks", mcap: 6000000, color: "#84CC16", img: "https://cdn.meme.com/images/meme_assets/2025-10-24/17613344323935piQ.png" },
-  { sym: "PENGU", name: "Pudgy Penguins", mcap: 450000000, color: "#38BDF8", img: "https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
+  { sym: "STNK", name: "Stonks", mcap: 6000000, color: "#3d7a1c", img: "https://cdn.meme.com/images/meme_assets/2025-10-24/17613344323935piQ.png" },
   { sym: "PEPE", name: "Pepe", mcap: 1700000000, color: "#4ADE80", img: "https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png" },
-  { sym: "MOG", name: "Mog Coin", mcap: 66000000, color: "#9333EA", img: "https://cdn.meme.com/images/meme_assets/2024-04-15/1713170597024m28Z.png" },
-  { sym: "DOG", name: "Own The Doge", mcap: 6700000, color: "#c2a633", img: "https://cdn.meme.com/images/meme_assets/2024-04-11/1712816760809SN3H.png" }
+  { sym: "MOG", name: "Mog Coin", mcap: 66000000, color: "#1e3a5f", img: "https://cdn.meme.com/images/meme_assets/2024-04-15/1713170597024m28Z.png" }
 ];
 
 async function fetchCoins() {
@@ -418,7 +477,8 @@ async function fetchCoins() {
     try {
       const ids = Object.values(COINGECKO_IDS);
       const cgRes = await fetch(
-        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`
+        `${CG_API}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`,
+        { headers: CG_HEADERS }
       );
       if (cgRes.ok) {
         const cgData = await cgRes.json();
@@ -449,7 +509,8 @@ async function fetchPrices(coins) {
     if (ids.length === 0) return {};
 
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`
+      `${CG_API}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`,
+      { headers: CG_HEADERS }
     );
     const data = await res.json();
 
@@ -515,8 +576,12 @@ const yP = (qY, qN, B) => {
 const buyShares = (qY, qN, B, cost, side) => {
   if (cost <= 0) return 0;
   const oldCost = costFn(qY, qN, B);
-  let lo = 0, hi = cost * 2;
-  for (let i = 0; i < 40; i++) {
+  // Upper bound must account for cheap minority-side shares
+  const m = Math.max(qY, qN) / B;
+  const eY = Math.exp(qY/B - m), eN = Math.exp(qN/B - m);
+  const p = side === "YES" ? eY / (eY + eN) : eN / (eY + eN);
+  let lo = 0, hi = Math.max(cost * 2, cost / Math.max(p, 0.01) * 2);
+  for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
     const newQY = side === "YES" ? qY + mid : qY;
     const newQN = side === "NO" ? qN + mid : qN;
@@ -539,12 +604,21 @@ const sellShares = (qY, qN, B, shares, side) => {
 
 const fM = v => v>=1e12?"$"+(v/1e12).toFixed(2)+"T":v>=1e9?"$"+(v/1e9).toFixed(2)+"B":v>=1e6?"$"+(v/1e6).toFixed(1)+"M":"$"+(v/1e3).toFixed(0)+"K";
 const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor((s%3600)/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
-const DUR = 86400;
 const gld = { background:"linear-gradient(193deg,#f7931a -49%,#fab248 -14%,#fff1a6 58%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" };
+
+// Next round expiry: 13:59:59 UTC daily (1s before 14:00 so pg_cron catches it)
+const nextRoundExpiry = () => {
+  const now = new Date();
+  const today14 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 13, 59, 59));
+  if (now.getTime() >= today14.getTime()) {
+    today14.setUTCDate(today14.getUTCDate() + 1);
+  }
+  return today14.getTime();
+};
 
 // B controls market depth - higher B = more liquidity, less price impact
 // Base liquidity should be proportional to B for LMSR to work correctly
-const getB = (mcap) => mcap > 1e9 ? 50000 : mcap > 100e6 ? 30000 : 20000;
+const getB = () => 100000;
 
 const mk = (c, r) => {
   const b = getB(c.mcap);
@@ -552,7 +626,7 @@ const mk = (c, r) => {
     id:c.sym+"-"+(r||1), c, rn:r||1, mc:c.mcap, startMc:c.mcap,
     qY:b, qN:b, // Start with equal shares = 50/50 odds
     b:b,
-    st:"OPEN", res:null, ea:Date.now()+DUR*1000, vol:0, ppl:0
+    st:"OPEN", res:null, ea:nextRoundExpiry(), vol:0, ppl:0
   };
 };
 
@@ -582,7 +656,8 @@ const CoinImg = ({ src, color, size, sym }) => {
 };
 
 const convBonus = (m) => {
-  const elapsed = (Date.now() - (m.ea - DUR*1000)) / (DUR*1000);
+  const roundDuration = 86400*1000; // 24h baseline for bonus calc
+  const elapsed = (Date.now() - (m.ea - roundDuration)) / roundDuration;
   if (elapsed < 0.25) return { mul:1.5, label:"EARLY BIRD 1.5x", color:"#f7931a" };
   if (elapsed < 0.5) return { mul:1.2, label:"CONVICTION 1.2x", color:"#71BAFF" };
   return { mul:1, label:null, color:null };
@@ -591,27 +666,29 @@ const convBonus = (m) => {
 const streakMul = (s) => s >= 10 ? 3 : s >= 5 ? 2 : s >= 3 ? 1.5 : 1;
 const streakLabel = (s) => s >= 10 ? "ON FIRE 3x" : s >= 5 ? "HOT STREAK 2x" : s >= 3 ? "STREAK 1.5x" : null;
 
-// Deposit/Withdraw modal component
+// Deposit/Withdraw modal (login prompt for guests, deposit/withdraw for logged-in)
 const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBalance, authToken, isMobile }) => {
-  const [mode, setMode] = useState("deposit"); // "deposit" or "withdraw"
+  const [mode, setMode] = useState("deposit");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   if (!isOpen) return null;
 
-  const maxAmount = mode === "deposit" ? memescore : labsBalance;
-  const minAmount = 100;
+  const LABS_CAP = 100000;
+  const depositRoom = Math.max(0, LABS_CAP - labsBalance);
+  const maxAmount = mode === "deposit" ? Math.min(memescore, depositRoom) : labsBalance;
+  const atCap = mode === "deposit" && labsBalance >= LABS_CAP;
 
   const handleSubmit = async () => {
+    if (atCap) { setError("Labs balance is at the 100k cap"); return; }
     const amt = parseInt(amount) || 0;
-    if (amt <= 0) return;
-    if (amt < minAmount) {
-      setError(`Minimum ${mode} is ${minAmount}`);
-      return;
-    }
-    if (amt > maxAmount) {
-      setError(mode === "deposit" ? "Insufficient memescore" : "Insufficient Labs balance");
+    if (amt <= 0 || amt > maxAmount) {
+      setError(amt > maxAmount
+        ? (mode === "deposit"
+          ? (depositRoom === 0 ? "Labs balance is at the 100k cap" : `Max deposit: ${depositRoom.toLocaleString()} (100k cap)`)
+          : "Insufficient Labs balance")
+        : "Enter a valid amount");
       return;
     }
 
@@ -629,13 +706,12 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
         body: JSON.stringify({ amount: amt })
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = {}; }
+      if (!res.ok) throw new Error(data.message || data.detail || text || `${mode} failed`);
 
-      if (!res.ok) {
-        throw new Error(data.message || data.detail || `${mode} failed`);
-      }
-
-      onDeposit(amt, data.new_labs_balance, data.new_memescore);
+      onDeposit(amt, mode, data.new_memescore);
       setAmount("");
       onClose();
     } catch (e) {
@@ -646,50 +722,41 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
     }
   };
 
-  // Not logged in - show login prompt
+  const modalBase = {
+    position:"fixed", inset:0, background:"rgba(0,0,0,0.8)",
+    display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
+  };
+  const panelBase = {
+    background:"linear-gradient(180deg,#1a2332,#0c1018)",
+    borderRadius: isMobile ? "20px 20px 0 0" : 20,
+    padding: isMobile ? "24px 16px 32px" : 32,
+    width: isMobile ? "100%" : "auto",
+    minWidth: isMobile ? "auto" : 340,
+    maxWidth: isMobile ? "100%" : 400,
+    border:"1px solid #ffffff15",
+    textAlign:"center"
+  };
+
+  // Guest: show login prompt
   if (!memeUser) {
     return (
-      <div style={{
-        position:"fixed", inset:0, background:"rgba(0,0,0,0.8)",
-        display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
-      }} onClick={onClose}>
-        <div style={{
-          background:"linear-gradient(180deg,#1a2332,#0c1018)",
-          borderRadius: isMobile ? "20px 20px 0 0" : 20,
-          padding: isMobile ? "24px 16px 32px" : 32,
-          width: isMobile ? "100%" : "auto",
-          minWidth: isMobile ? "auto" : 340,
-          maxWidth: isMobile ? "100%" : 400,
-          border:"1px solid #ffffff15",
-          textAlign:"center"
-        }} onClick={e => e.stopPropagation()}>
+      <div style={modalBase} onClick={onClose}>
+        <div style={panelBase} onClick={e => e.stopPropagation()}>
           <div style={{
             fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.4em",
             marginBottom:20
           }}>Login Required</div>
-
           <div style={{
             fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
             color:"#94a3b8", marginBottom:24, lineHeight:1.5
-          }}>
-            Connect your meme.com account to deposit memescore and start playing.
-          </div>
-
-          <a
-            href="https://meme.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display:"block", width:"100%", height:48, borderRadius:12, border:"none",
-              background:"linear-gradient(90deg,#71BAFF,#4023C3)",
-              color:"#fff", cursor:"pointer", textDecoration:"none",
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
-              lineHeight:"48px"
-            }}
-          >
-            Login on meme.com
-          </a>
-
+          }}>Connect your meme.com account to start playing.</div>
+          <a href="https://meme.com" target="_blank" rel="noopener noreferrer" style={{
+            display:"block", width:"100%", height:48, borderRadius:12, border:"none",
+            background:"linear-gradient(90deg,#71BAFF,#4023C3)",
+            color:"#fff", cursor:"pointer", textDecoration:"none",
+            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
+            lineHeight:"48px"
+          }}>Login on meme.com</a>
           <button onClick={onClose} style={{
             marginTop:12, width:"100%", height:40, borderRadius:10, border:"none",
             background:"transparent", color:"#ffffff60", cursor:"pointer",
@@ -700,122 +767,118 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
     );
   }
 
+  // Logged in: deposit/withdraw UI
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.8)",
-      display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
-    }} onClick={onClose}>
-      <div style={{
-        background:"linear-gradient(180deg,#1a2332,#0c1018)",
-        borderRadius: isMobile ? "20px 20px 0 0" : 20,
-        padding: isMobile ? "20px 16px 32px" : 24,
-        width: isMobile ? "100%" : "auto",
-        minWidth: isMobile ? "auto" : 360,
-        maxWidth: isMobile ? "100%" : 420,
-        border:"1px solid #ffffff15"
-      }} onClick={e => e.stopPropagation()}>
-        {/* Mode tabs */}
-        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          <button onClick={() => { setMode("deposit"); setError(null); setAmount(""); }} style={{
-            flex:1, padding:"10px 0", borderRadius:10,
-            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1em",
-            background: mode === "deposit" ? "linear-gradient(90deg,#71BAFF,#4023C3)" : "#ffffff10",
-            border: mode === "deposit" ? "none" : "1px solid #ffffff15",
-            color:"#fff", cursor:"pointer"
-          }}>Deposit</button>
-          <button onClick={() => { setMode("withdraw"); setError(null); setAmount(""); }} style={{
-            flex:1, padding:"10px 0", borderRadius:10,
-            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1em",
-            background: mode === "withdraw" ? "linear-gradient(90deg,#f7931a,#c2410c)" : "#ffffff10",
-            border: mode === "withdraw" ? "none" : "1px solid #ffffff15",
-            color:"#fff", cursor:"pointer"
-          }}>Withdraw</button>
-        </div>
-
-        {/* Balance display */}
+    <div style={modalBase} onClick={onClose}>
+      <div style={panelBase} onClick={e => e.stopPropagation()}>
         <div style={{
-          display:"flex", justifyContent:"space-between", marginBottom:16,
-          padding:"12px 14px", background:"#0c1018", borderRadius:10
+          fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.4em",
+          marginBottom:16
+        }}>Labs Balance</div>
+
+        <div style={{
+          display:"flex", justifyContent:"space-around", marginBottom:16,
+          padding:"12px 0", borderRadius:12, background:"#0c101855"
         }}>
-          <div style={{ textAlign:"center", flex:1 }}>
-            <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff50", marginBottom:4 }}>MEMESCORE</div>
-            <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", color:"#f7931a" }}>{memescore.toLocaleString()}</div>
+          <div>
+            <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff50" }}>MEMESCORE</div>
+            <div style={{ ...gld, fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.2em" }}>
+              {memescore.toLocaleString()}
+            </div>
           </div>
-          <div style={{ width:1, background:"#ffffff15" }} />
-          <div style={{ textAlign:"center", flex:1 }}>
-            <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff50", marginBottom:4 }}>LABS BALANCE</div>
-            <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", color:"#71BAFF" }}>{labsBalance.toLocaleString()}</div>
+          <div style={{ width:1, background:"#ffffff15" }}/>
+          <div>
+            <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff50" }}>LABS BALANCE</div>
+            <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.2em", color:"#71BAFF" }}>
+              {labsBalance.toLocaleString()}
+            </div>
           </div>
         </div>
-
-        {error && (
-          <div style={{
-            fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
-            color:"#ef4444", textAlign:"center", marginBottom:12,
-            padding:10, background:"#ef444415", borderRadius:8
-          }}>
-            {error}
-          </div>
-        )}
-
-        <input
-          type="number"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          placeholder="Amount..."
-          value={amount}
-          onChange={e => { setAmount(e.target.value); setError(null); }}
-          style={{
-            width:"100%", height:48, border:"1px solid #4c5159", borderRadius:12,
-            textAlign:"center", color:"#fff", background:"#0c1018",
-            fontFamily:"'Jersey 25',sans-serif", fontSize:"1.2em", outline:"none",
-            marginBottom:12
-          }}
-        />
 
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          {[1000, 5000, 10000].map(amt => (
-            <button key={amt} onClick={() => { setAmount(String(Math.min(amt, maxAmount))); setError(null); }} style={{
-              flex:1, padding:"8px 0", borderRadius:8,
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
-              background:"#00000042", border:"1px solid #ffffff15",
-              color: amt <= maxAmount ? "#ffffff80" : "#ffffff30", cursor:"pointer"
-            }}>{(amt/1000)}K</button>
+          {["deposit","withdraw"].map(m => (
+            <button key={m} onClick={() => { setMode(m); setAmount(""); setError(null); }} style={{
+              flex:1, height:36, borderRadius:10, border:"none", cursor:"pointer",
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".9em", textTransform:"uppercase",
+              background: mode===m ? "linear-gradient(90deg,#71BAFF,#4023C3)" : "#ffffff10",
+              color: mode===m ? "#fff" : "#ffffff60"
+            }}>{m}</button>
           ))}
-          <button onClick={() => { setAmount(String(maxAmount)); setError(null); }} style={{
-            flex:1, padding:"8px 0", borderRadius:8,
-            fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
-            background: mode === "deposit" ? "#f7931a20" : "#71BAFF20",
-            border: mode === "deposit" ? "1px solid #f7931a40" : "1px solid #71BAFF40",
-            color: mode === "deposit" ? "#f7931a" : "#71BAFF", cursor:"pointer"
-          }}>MAX</button>
         </div>
 
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onClose} style={{
-            flex:1, height:44, borderRadius:12, border:"none",
-            background:"#ffffff15", color:"#fff", cursor:"pointer",
-            fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
-          }}>Cancel</button>
-          <button onClick={handleSubmit} disabled={loading || !amount} style={{
-            flex:2, height:44, borderRadius:12, border:"none",
-            background: loading ? "#4c5159" : mode === "deposit"
-              ? "linear-gradient(90deg,#71BAFF,#4023C3)"
-              : "linear-gradient(90deg,#f7931a,#c2410c)",
-            color:"#fff", cursor: loading ? "wait" : "pointer",
-            fontFamily:"'Jersey 25',sans-serif", fontSize:"1em"
-          }}>{loading ? "Processing..." : mode === "deposit" ? "Deposit" : "Withdraw"}</button>
+        <div style={{ marginBottom:12 }}>
+          <div style={{
+            fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff50",
+            textAlign:"right", marginBottom:4
+          }}>
+            {mode === "deposit" ? "MEMESCORE" : "LABS"}: {maxAmount.toLocaleString()}
+          </div>
+          <input type="number" inputMode="numeric" pattern="[0-9]*"
+            placeholder={`Amount to ${mode}...`}
+            value={amount} onChange={e => { setAmount(e.target.value); setError(null); }}
+            style={{
+              height:42, border:"1px solid #4c5159", borderRadius:15,
+              textAlign:"center", color:"#fff", background:"transparent",
+              fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none",
+              width:"100%", boxSizing:"border-box"
+            }}/>
+          <div style={{ display:"flex", gap:6, marginTop:6 }}>
+            {[25,50,75,100].map(p =>
+              <button key={p}
+                onClick={() => setAmount(String(Math.floor(maxAmount*p/100)))}
+                style={{
+                  flex:1, padding:"4px 0", borderRadius:8,
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
+                  background:"#00000042", border:"1px solid #ffffff15",
+                  color:"#ffffff80", cursor:"pointer"
+                }}>{p}%</button>
+            )}
+          </div>
         </div>
+
+        {error && <div style={{
+          fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
+          color:"#f65e5e", marginBottom:10
+        }}>{error}</div>}
+
+        {atCap && <div style={{
+          fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
+          color:"#f7931a", marginBottom:10
+        }}>Labs balance is at the 100k cap. Withdraw or play to deposit more.</div>}
+
+        <button onClick={handleSubmit} disabled={loading || atCap || !amount || parseInt(amount)<=0}
+          style={{
+            width:"100%", height:48, borderRadius:12, border:"none",
+            background: (loading || atCap) ? "#ffffff20" : "linear-gradient(90deg,#71BAFF,#4023C3)",
+            color:"#fff", cursor: (loading || atCap) ? "not-allowed" : "pointer",
+            fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
+            opacity: (atCap || !amount || parseInt(amount)<=0) ? 0.5 : 1
+          }}>
+          {loading ? "Processing..." : mode === "deposit" ? "Deposit to Labs" : "Withdraw to Memescore"}
+        </button>
+
+        <button onClick={onClose} style={{
+          marginTop:12, width:"100%", height:40, borderRadius:10, border:"none",
+          background:"transparent", color:"#ffffff60", cursor:"pointer",
+          fontFamily:"'Jersey 25',sans-serif", fontSize:".85em"
+        }}>Cancel</button>
+
+        <div style={{
+          fontFamily:"'Jersey 25',sans-serif", fontSize:".7em",
+          color:"#ffffff30", marginTop:16, lineHeight:1.4
+        }}>Having issues? Try logging out and back in on meme.com</div>
       </div>
     </div>
   );
 };
 
-const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
+const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, memeUser, onLoginRequired }) => {
   const [step, setStep] = useState("sel");
   const [side, setSide] = useState(null);
   const [amt, setAmt] = useState("");
   const [sec, setSec] = useState(0);
+  const [priceFlash, setPriceFlash] = useState(null); // "up" | "down" | null
+  const prevMc = React.useRef(m.mc);
 
   useEffect(() => {
     const t = () => setSec(Math.max(0,Math.floor((m.ea-Date.now())/1000)));
@@ -823,6 +886,16 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
     const i = setInterval(t,1000);
     return () => clearInterval(i);
   }, [m.ea]);
+
+  useEffect(() => {
+    if (prevMc.current && m.mc !== prevMc.current) {
+      setPriceFlash(m.mc > prevMc.current ? "up" : "down");
+      const t = setTimeout(() => setPriceFlash(null), 1200);
+      prevMc.current = m.mc;
+      return () => clearTimeout(t);
+    }
+    prevMc.current = m.mc;
+  }, [m.mc]);
 
   useEffect(() => {
     if (m.st==="RES" && pos) setStep("res");
@@ -863,19 +936,26 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
         minHeight:192, display:"flex", flexDirection:"column",
         justifyContent:"space-between"
       }}>
-        <div style={{ display:"flex", alignItems:"center", marginBottom:12, gap:11 }}>
-          <CoinImg src={m.c.img} color={m.c.color} size={40} sym={m.c.sym}/>
-          <div>
+        <div style={{ display:"flex", alignItems:"center", marginBottom:12, gap:11, justifyContent:"space-between" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:11 }}>
+            <CoinImg src={m.c.img} color={m.c.color} size={40} sym={m.c.sym}/>
             <div style={{
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:".875em",
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
               textTransform:"uppercase",
               textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
               lineHeight:1.2
-            }}>${m.c.sym} Up or Down</div>
-            <div style={{
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
-              color:"#ffffff35", marginTop:2
-            }}>24h prediction</div>
+            }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none", textShadow:"none" }}>${m.c.sym}</a> Up or Down</div>
+          </div>
+          <div style={{
+            padding:"2px 8px", borderRadius:8,
+            background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
+            border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
+            animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
+          }}>
+            <span style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
+              letterSpacing:"1px", ...gld
+            }}>{fT(sec)}</span>
           </div>
         </div>
 
@@ -885,28 +965,35 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
         }}>
           <div style={{ whiteSpace:"nowrap" }}>
             <div style={{
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
               color:"#ffffff40", marginBottom:2
             }}>PRICE TO BEAT</div>
             <div style={{
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em",
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
               color:"#94a3b8"
             }}>{fM(m.startMc)}</div>
           </div>
-          <div style={{ width:1, height:32, background:"#ffffff20", flexShrink:0 }}/>
+          <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
           <div style={{ whiteSpace:"nowrap" }}>
             <div style={{
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
               color:"#ffffff40", marginBottom:2
             }}>CURRENT PRICE</div>
             <div style={{
               display:"flex", alignItems:"center", gap:4,
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em"
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em"
             }}>
-              <span style={{...gld}}>{fM(m.mc)}</span>
               <span style={{
-                fontFamily:"'Jersey 25',sans-serif", fontSize:".7em",
-                color: isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40"
+                ...gld,
+                transition:"transform 0.3s ease",
+                transform: priceFlash ? "scale(1.15)" : "scale(1)",
+                display:"inline-block"
+              }}>{fM(m.mc)}</span>
+              <span style={{
+                fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
+                color: priceFlash === "up" ? "#4ade80" : priceFlash === "down" ? "#f65e5e" : isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40",
+                transition:"color 0.3s ease",
+                animation: priceFlash ? "priceFlash 1.2s ease-out" : undefined
               }}>
                 {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {Math.abs(pctChange).toFixed(1)}%
               </span>
@@ -914,21 +1001,21 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
           </div>
           {pos && !pos.claimed && (
             <>
-              <div style={{ width:1, height:32, background:"#ffffff20", flexShrink:0 }}/>
+              <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
               <div style={{ whiteSpace:"nowrap" }}>
                 <div style={{
-                  fontFamily:"'Jersey 25',sans-serif", fontSize:".5em",
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
                   color:"#ffffff40", marginBottom:2
                 }}>YOUR BET</div>
                 <div style={{
                   display:"flex", alignItems:"center", gap:4,
-                  fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em"
+                  fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em"
                 }}>
                   <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
-                    {rf.toLocaleString()} {pos.side==="YES" ? "UP" : "DN"}
+                    {rf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
                   </span>
                   <span style={{
-                    fontFamily:"'Jersey 25',sans-serif", fontSize:".7em",
+                    fontFamily:"'Jersey 25',sans-serif", fontSize:".75em",
                     color: pnl>=0 ? "#4ade80" : "#f65e5e"
                   }}>
                     {pnl>=0 ? "▲" : "▼"} {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
@@ -970,11 +1057,11 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
           {step==="sel" && m.st==="OPEN" && (
             <div style={{ display:"flex", gap:10 }}>
               <button style={{ ...bx, background:"#71baff8a" }}
-                onClick={() => { setSide("YES"); setStep("amt"); }}>
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}>
                 UP
               </button>
               <button style={{ ...bx, background:"#234bc29e", border:"2px solid #c8dbff52" }}
-                onClick={() => { setSide("NO"); setStep("amt"); }}>
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}>
                 DOWN
               </button>
             </div>
@@ -1040,11 +1127,11 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               {pos && !pos.claimed && (
                 <button
-                  style={{ ...bx, background: m.res===pos.side ? "#71baff" : "#00000042" }}
+                  style={{ ...bx, background: m.res===pos.side ? "#71baff" : "#f65e5e30" }}
                   onClick={() => onClaim(m.id)}>
                   {m.res===pos.side
                     ? "CLAIM "+Math.round(pos.sh).toLocaleString()
-                    : "CLAIM (0)"}
+                    : "YOU LOST. CLOSE."}
                 </button>
               )}
               {pos && pos.claimed && (
@@ -1061,18 +1148,30 @@ const Card = ({ m, bal, pos, onBuy, onSell, onClaim, streak, isMobile }) => {
         display:"flex", alignItems:"center", marginTop:10,
         padding:"0 16px", justifyContent:"space-between"
       }}>
-        <span style={{
-          fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
-          ...gld,
-          textShadow:"0 0 10px rgba(250,178,72,0.4), 0 0 20px rgba(250,178,72,0.2)"
-        }}>{fT(sec)}</span>
-        <div style={{ display:"flex", alignItems:"center", fontSize:".75em" }}>
-          <span style={{ fontFamily:"'Jersey 25',sans-serif" }}>
-            <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
-          </span>
-          <span style={{ margin:"0 8px", color:"#72727266" }}>|</span>
-          <span style={{ fontFamily:"'Jersey 25',sans-serif" }}>{m.ppl} players</span>
+        <div style={{ display:"flex", alignItems:"center", fontSize:".75em", gap:8 }}>
+          {players.length > 0 && marketPool(m.qY, m.qN, m.b) > 0 && (
+            <div style={{ display:"flex", alignItems:"center" }}>
+              {players.slice(0, 3).map((p, i) => (
+                <div key={p.userId} style={{
+                  width:24, height:24, borderRadius:"50%", border:"2px solid #191f29",
+                  marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i,
+                  background: p.img ? `url(${p.img}) center/cover` : "linear-gradient(135deg,#4e596c,#212936)",
+                  position:"relative"
+                }}/>
+              ))}
+              {players.length > 3 && (
+                <span style={{
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
+                  color:"#ffffff60", marginLeft:4
+                }}>+{players.length - 3}</span>
+              )}
+            </div>
+          )}
         </div>
+        {marketPool(m.qY, m.qN, m.b) > 0 && <span style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".85em" }}>
+          <span style={{ color:"#ffffff30", marginRight:4 }}>POOL</span>
+          <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
+        </span>}
       </div>
     </div>
   );
@@ -1085,20 +1184,29 @@ function App() {
   const [hist, setHist] = useState([]);
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [myProfit, setMyProfit] = useState(0);
   const [loading, setLoading] = useState(true);
+  const dbLoaded = React.useRef(false);
+  const [marketPlayers, setMarketPlayers] = useState({});
   const [lastUpdate, setLastUpdate] = useState(null);
   const [, tick] = useState(0);
   const [memeUser, setMemeUser] = useState(null);
-  const [memescore, setMemescore] = useState(0);
   const [authToken, setAuthToken] = useState(null);
+  const [memescore, setMemescore] = useState(0);
   const [showDeposit, setShowDeposit] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
   const [marketHistory, setMarketHistory] = useState([]);
 
-  // Refresh leaderboard from database
+  // Refresh leaderboard and market history from database
   const refreshLeaderboard = useCallback(async () => {
     const leaders = await loadLeaderboardFromDb();
     if (leaders) setLeaderboard(leaders);
+    const players = await loadMarketPlayersFromDb();
+    setMarketPlayers(players);
+    const history = await loadMarketHistoryFromDb();
+    if (history) setMarketHistory(history);
   }, []);
   const [notification, setNotification] = useState(null);
   const initialized = useRef(false);
@@ -1106,45 +1214,78 @@ function App() {
   const userId = useRef(null);
   const isMobile = useIsMobile();
 
-  // Check for meme.com auth on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      const auth = getMemeAuth();
-      if (!auth) {
-        setMemeUser(null);
-        setAuthToken(null);
-        userId.current = getUserId(null);
-        return;
-      }
-
-      setAuthToken(auth.token);
-
-      // Fetch user profile
-      const user = await fetchMemeUser(auth.token);
-      if (user) {
-        setMemeUser(user);
-        userId.current = getUserId(user.id);
-
-        // Fetch labs balance (includes memescore)
-        const balances = await fetchLabsBalance(auth.token);
-        setBal(balances.labsBalance);
-        setMemescore(balances.memescore);
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  // Load state on mount - try Supabase first, fallback to localStorage
+  // Auth + init on mount (sequential to avoid race condition)
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    const saved = loadState();
+    const initAll = async () => {
+      // Step 1: Check auth and set userId before anything else
+      const auth = getMemeAuth();
+      let currentUser = null;
+      if (auth) {
+        const user = await fetchMemeUser(auth.token);
+        if (user) {
+          currentUser = user;
+          setAuthToken(auth.token);
+          setMemeUser(user);
+          userId.current = getUserId(user.id);
 
-    const init = async () => {
-      // Ensure user exists in database
-      await ensureUserInDb(userId.current, memeUser);
+          // Fetch memescore from meme.com API (for deposit modal)
+          const balances = await fetchLabsBalance(auth.token);
+          setMemescore(balances.memescore);
+        } else {
+          // Token rejected (expired/invalid) — clear cached token
+          clearCachedAuth();
+          userId.current = getUserId(null);
+        }
+      } else {
+        userId.current = getUserId(null);
+      }
+
+      // Migrate data from old anonymous ID to new meme ID (one-time)
+      if (currentUser && supabase) {
+        const oldAnonId = localStorage.getItem("labs_user_id");
+        if (oldAnonId && oldAnonId !== userId.current) {
+          try {
+            // Move positions from old ID to new ID
+            await supabase.from("labs_positions")
+              .update({ user_id: userId.current })
+              .eq("user_id", oldAnonId);
+            // Move trades from old ID to new ID
+            await supabase.from("labs_trades")
+              .update({ user_id: userId.current })
+              .eq("user_id", oldAnonId);
+            // Copy stats from old user record
+            const { data: oldUser } = await supabase.from("labs_users")
+              .select("*").eq("id", oldAnonId).single();
+            if (oldUser) {
+              await supabase.from("labs_users").upsert({
+                id: userId.current,
+                username: currentUser.username,
+                profile_image: currentUser.image,
+                labs_balance: oldUser.labs_balance,
+                total_volume: oldUser.total_volume,
+                wins: oldUser.wins,
+                losses: oldUser.losses,
+                current_streak: oldUser.current_streak,
+                best_streak: oldUser.best_streak
+              });
+              // Clean up old anonymous record
+              await supabase.from("labs_users").delete().eq("id", oldAnonId);
+            }
+            // Mark migration done
+            localStorage.removeItem("labs_user_id");
+            console.log("Migrated user data from", oldAnonId, "to", userId.current);
+          } catch (e) {
+            console.log("Migration skipped:", e.message);
+          }
+        }
+      }
+
+      // Step 2: Initialize app state (userId is now set)
+      const saved = loadState();
+      await ensureUserInDb(userId.current, currentUser);
 
       // Load leaderboard and history
       const leaders = await loadLeaderboardFromDb();
@@ -1163,27 +1304,49 @@ function App() {
       coins.forEach(c => { coinMap[c.sym] = c; });
 
       // Try loading from Supabase first
-      const dbMarkets = await loadMarketsFromDb();
-      const dbUser = await loadUserFromDb(userId.current);
       const dbPositions = await loadPositionsFromDb(userId.current);
+      // Load all markets (including resolved) so we can show claim UI for unclaimed positions
+      const dbMarkets = await loadMarketsFromDb(true);
+      const dbUser = await loadUserFromDb(userId.current);
+      const players = await loadMarketPlayersFromDb();
+      setMarketPlayers(players);
 
       if (dbMarkets && dbMarkets.length > 0) {
-        // Use shared markets from DB
-        const localMks = dbMarkets.map(db => dbMarketToLocal(db, coinMap[db.coin_symbol]));
-        setMks(localMks);
+        // Show OPEN markets + resolved markets with unclaimed positions
+        const posMarketIds = dbPositions ? new Set(Object.keys(dbPositions)) : new Set();
+        const relevantMarkets = dbMarkets.filter(db =>
+          db.status === "OPEN" || (db.status === "RES" && posMarketIds.has(db.id))
+        );
+        const localMks = relevantMarkets.map(db => dbMarketToLocal(db, coinMap[db.coin_symbol]));
+        // Create markets for any coins missing an OPEN market
+        const openSyms = new Set(dbMarkets.filter(db => db.status === "OPEN").map(db => db.coin_symbol));
+        coins.forEach(c => {
+          if (!openSyms.has(c.sym)) {
+            const highest = dbMarkets.filter(db => db.coin_symbol === c.sym)
+              .reduce((max, db) => { const rn = parseInt(db.id.split("-")[1]) || 0; return rn > max ? rn : max; }, 0);
+            const newM = mk(c, highest + 1);
+            localMks.push(newM);
+            syncMarketToDb(newM);
+          }
+        });
+        setMks(dedup(localMks));
 
-        // Load user data from database if available
+        // Load user data from database — Supabase is source of truth for arena balance
         if (dbUser) {
-          setBal(dbUser.labs_balance ?? 10000);
+          setBal(dbUser.labs_balance ?? 0);
           setStreak(dbUser.current_streak ?? 0);
           setBestStreak(dbUser.best_streak ?? 0);
-        } else if (saved) {
-          setBal(saved.bal ?? 10000);
+          setWins(dbUser.wins ?? 0);
+          setLosses(dbUser.losses ?? 0);
+          setMyProfit(dbUser.total_profit ?? 0);
+        } else if (!currentUser && saved) {
+          // Only fall back to localStorage for anonymous users (not logged-in users)
+          if (saved.bal > 0) setBal(saved.bal);
           setStreak(saved.streak || 0);
         }
 
-        // Load positions from database if available
-        if (dbPositions && Object.keys(dbPositions).length > 0) {
+        // Load positions from database (null = DB error, empty = no positions)
+        if (dbPositions !== null) {
           setPos(dbPositions);
         } else if (saved) {
           setPos(saved.pos || {});
@@ -1205,7 +1368,7 @@ function App() {
 
         setMks(restoredMks);
         setPos(saved.pos || {});
-        setBal(saved.bal ?? 10000);
+        setBal(saved.bal ?? 0);
         setHist(saved.hist || []);
         setStreak(saved.streak || 0);
 
@@ -1219,10 +1382,11 @@ function App() {
         // Sync new markets to Supabase
         newMks.forEach(m => syncMarketToDb(m));
       }
+      dbLoaded.current = true;
       setLoading(false);
     };
 
-    init();
+    initAll();
   }, []);
 
   // Calculate total volume and wins/losses
@@ -1230,37 +1394,43 @@ function App() {
     return Object.values(pos).reduce((s, p) => s + p.inv, 0) + hist.reduce((s, h) => s + h.inv, 0);
   }, [pos, hist]);
 
-  const wins = useMemo(() => hist.filter(h => h.result === h.side).length, [hist]);
-  const losses = useMemo(() => hist.filter(h => h.result !== h.side).length, [hist]);
+  // wins and losses are now state loaded from DB, not computed from hist
 
-  // Save state whenever it changes
+  // Save state whenever it changes (only after DB values are loaded)
   useEffect(() => {
-    if (loading || mks.length === 0) return;
+    if (loading || !dbLoaded.current || mks.length === 0) return;
     saveState({ mks, pos, bal, hist, streak, bestStreak, savedAt: Date.now() });
 
-    // Sync user stats to database
-    syncUserToDb(userId.current, bal, totalVolume, wins, losses, streak, bestStreak);
+    // Sync user stats to database (balance managed by RPCs only)
+    syncUserToDb(userId.current, totalVolume, wins, losses, streak, bestStreak);
   }, [mks, pos, bal, hist, streak, bestStreak, loading, totalVolume, wins, losses]);
 
-  // Real price feed from meme.com API (every 30 seconds)
+  // Price feed from CoinGecko (every 15s), synced to DB
   useEffect(() => {
     if (mks.length === 0) return;
 
     const updatePrices = async () => {
-      const prices = await fetchPrices(mks.map(m => m.c));
-      setMks(p => p.map(m => {
-        if (m.st !== "OPEN") return m;
-        const data = prices[m.c.sym.toLowerCase()];
-        if (data) {
-          return { ...m, mc: data.mcap };
+      const coins = mks.filter(m => m.st === "OPEN").map(m => m.c);
+      if (coins.length === 0) return;
+      const prices = await fetchPrices(coins);
+      // Write to DB only — refreshMarkets (every 15s) syncs DB→local for all clients
+      if (supabase) {
+        const now = new Date().toISOString();
+        for (const m of mks) {
+          if (m.st !== "OPEN") continue;
+          const data = prices[m.c.sym.toLowerCase()];
+          if (data && data.mcap) {
+            await supabase.from("labs_markets").update({
+              current_mc: data.mcap,
+              price_updated_at: now
+            }).eq("id", m.id);
+          }
         }
-        return m;
-      }));
-      setLastUpdate(new Date());
+      }
     };
 
     updatePrices();
-    const i = setInterval(updatePrices, 60000); // 60s to avoid CoinGecko rate limits
+    const i = setInterval(updatePrices, 60000);
     return () => clearInterval(i);
   }, [mks.length]);
 
@@ -1271,54 +1441,93 @@ function App() {
     return () => clearInterval(i);
   }, [loading, refreshLeaderboard]);
 
-  // resolve: UP/DOWN model - resolves at expiry only
+  // Periodic market state refresh from DB (every 15 seconds)
   useEffect(() => {
-    const i = setInterval(() => {
-      const n = Date.now();
-      setMks(p => p.map(m => {
-        if (m.st!=="OPEN") return m;
-        if (n >= m.ea) {
-          const resolved = { ...m, st:"RES", res: m.mc > m.startMc ? "YES" : "NO" };
-          // Sync resolution to database
-          syncMarketToDb(resolved);
-          return resolved;
-        }
-        return m;
-      }));
-      tick(t => t+1);
-    }, 1000);
+    if (loading || mks.length === 0) return;
+    const refreshMarkets = async () => {
+      const dbMarkets = await loadMarketsFromDb(true);
+      if (!dbMarkets || dbMarkets.length === 0) return;
+      const dbMap = {};
+      dbMarkets.forEach(db => { dbMap[db.id] = db; });
+
+      setMks(prev => {
+        const localIds = new Set(prev.map(m => m.id));
+        let updated = prev.map(m => {
+          const db = dbMap[m.id];
+          if (!db) return m;
+          const b = m.b;
+          // If DB says resolved but local says open, sync resolution
+          if (db.status === "RES" && m.st === "OPEN") {
+            return { ...m, st: "RES", res: db.result,
+              mc: Number(db.current_mc) || m.mc,
+              qY: (Number(db.q_yes) || 0) + b,
+              qN: (Number(db.q_no) || 0) + b,
+              vol: Number(db.volume) || m.vol,
+              ppl: Number(db.players) || m.ppl
+            };
+          }
+          if (m.st !== "OPEN") return m;
+          return {
+            ...m,
+            mc: Number(db.current_mc) || m.mc,
+            startMc: Number(db.start_mc) || m.startMc,
+            ea: db.expires_at ? new Date(db.expires_at).getTime() : m.ea,
+            qY: (Number(db.q_yes) || 0) + b,
+            qN: (Number(db.q_no) || 0) + b,
+            vol: Number(db.volume) || m.vol,
+            ppl: Number(db.players) || m.ppl
+          };
+        });
+        // Add any new markets from DB that we don't have locally (OPEN, or resolved with position)
+        dbMarkets.filter(db => !localIds.has(db.id) && (db.status === "OPEN" || (db.status === "RES" && pos[db.id] && !pos[db.id].claimed))).forEach(db => {
+          const coinData = prev.find(m => m.c.sym === db.coin_symbol)?.c;
+          if (coinData) updated.push(dbMarketToLocal(db, coinData));
+        });
+        return dedup(updated);
+      });
+    };
+    const refreshAll = async () => {
+      await refreshMarkets();
+      const players = await loadMarketPlayersFromDb();
+      setMarketPlayers(players);
+      setLastUpdate(new Date());
+    };
+    const i = setInterval(refreshAll, 15000);
+    return () => clearInterval(i);
+  }, [loading, mks.length]);
+
+  // Timer tick (for countdown display)
+  useEffect(() => {
+    const i = setInterval(() => tick(t => t+1), 1000);
     return () => clearInterval(i);
   }, []);
 
-  // auto-renew markets after resolution
+  // Auto-create new markets after resolution (DB trigger prevents duplicates)
   useEffect(() => {
     const i = setInterval(() => {
-      const newMarkets = [];
       setMks(p => {
-        const ids = [];
-        const u = p.map(m => {
-          if (m.st!=="RES") return m;
-          if (!m._r) {
-            return { ...m, _r:Date.now() };
-          }
-          if (Date.now()-m._r < 10000) return m;
-          ids.push(m.id);
-          const newM = mk({ ...m.c, mcap:m.mc }, m.rn+1);
+        const openBySymbol = new Set(p.filter(m => m.st === "OPEN").map(m => m.c.sym));
+        const resolved = p.filter(m => m.st === "RES");
+        const newMarkets = [];
+        resolved.forEach(m => {
+          // Skip if user has unclaimed position
+          if (pos[m.id] && !pos[m.id].claimed) return;
+          // Skip if there's already an OPEN market for this coin
+          if (openBySymbol.has(m.c.sym)) return;
+          const newM = mk({ ...m.c, mcap: m.mc }, m.rn + 1);
           newMarkets.push(newM);
-          return newM;
+          openBySymbol.add(m.c.sym);
         });
-        if (ids.length) setPos(pp => {
-          const n = { ...pp };
-          ids.forEach(id => delete n[id]);
-          return n;
-        });
-        return u;
+        if (newMarkets.length === 0) return p;
+        // Sync new markets to DB (prevent_duplicate_open trigger is safety net)
+        newMarkets.forEach(m => syncMarketToDb(m));
+        // Remove old resolved markets (that had no unclaimed position) and add new ones
+        const resolvedIds = new Set(resolved.filter(m => !pos[m.id] || pos[m.id].claimed).map(m => m.id));
+        return dedup([...p.filter(m => !resolvedIds.has(m.id)), ...newMarkets]);
       });
-      // Sync new markets to database
-      newMarkets.forEach(m => syncMarketToDb(m));
-    }, 2000);
+    }, 5000);
     return () => clearInterval(i);
-  }, []);
+  }, [pos]);
 
   // Show notification when market resolves and user has unclaimed position
   useEffect(() => {
@@ -1344,6 +1553,7 @@ function App() {
   }, [mks, pos]);
 
   const onBuy = useCallback(async (mid, side, amt) => {
+    if (!memeUser) { setShowDeposit(true); return; }
     const m = mks.find(x => x.id===mid);
     if (!m || m.st !== "OPEN") return;
 
@@ -1364,7 +1574,6 @@ function App() {
 
     setMks(p => p.map(mk => mk.id !== mid ? mk : updatedMarket));
     setPos(p => ({ ...p, [mid]: newPosition }));
-    setBal(b => b - amt);
 
     // Try atomic database function first, fall back to sync
     if (supabase) {
@@ -1376,13 +1585,12 @@ function App() {
           p_amount: amt
         });
         if (!error && data?.success) {
-          // Update with server values
+          // Update with server values (RPC already deducted balance)
           setMks(p => p.map(mk => {
             if (mk.id !== mid) return mk;
             return { ...mk, qY: mk.b + data.new_q_yes, qN: mk.b + data.new_q_no };
           }));
           setBal(data.new_balance);
-          // Refresh leaderboard after successful trade
           setTimeout(refreshLeaderboard, 500);
           return;
         }
@@ -1390,15 +1598,21 @@ function App() {
         console.log("RPC not available, using sync fallback");
       }
     }
-    // Fallback to client-side sync
+    // Fallback: deduct locally and sync
+    setBal(b => b - amt);
     syncMarketToDb(updatedMarket);
     syncPositionToDb(userId.current, mid, newPosition);
     recordTradeInDb(userId.current, mid, m.c.sym, side, shares, amt, 'BUY');
+    // Deduct balance in DB atomically
+    if (supabase) {
+      await supabase.rpc('labs_adjust_balance', { p_user_id: userId.current, p_delta: -amt });
+    }
     // Refresh leaderboard after fallback sync
     setTimeout(refreshLeaderboard, 500);
-  }, [mks, pos, refreshLeaderboard]);
+  }, [mks, pos, memeUser, refreshLeaderboard]);
 
   const onSell = useCallback(async (mid) => {
+    if (!memeUser) { setShowDeposit(true); return; }
     const pp = pos[mid];
     const m = mks.find(x => x.id===mid);
     if (!pp || !m) return;
@@ -1416,7 +1630,6 @@ function App() {
 
     setMks(p => p.map(x => x.id !== mid ? x : updatedMarket));
     setPos(p => { const n={...p}; delete n[mid]; return n; });
-    setBal(b => b + rf);
 
     // Try atomic database function first, fall back to sync
     if (supabase) {
@@ -1426,12 +1639,13 @@ function App() {
           p_market_id: mid
         });
         if (!error && data?.success) {
-          // Update with server values
+          // Update with server values (RPC already credited balance)
           setMks(p => p.map(mk => {
             if (mk.id !== mid) return mk;
             return { ...mk, qY: mk.b + data.new_q_yes, qN: mk.b + data.new_q_no };
           }));
-          // Refresh leaderboard after successful trade
+          if (data.new_balance != null) setBal(data.new_balance);
+          else setBal(b => b + rf);
           setTimeout(refreshLeaderboard, 500);
           return;
         }
@@ -1439,15 +1653,22 @@ function App() {
         console.log("RPC not available, using sync fallback");
       }
     }
-    // Fallback to client-side sync
+    // Fallback: credit locally and sync
+    setBal(b => b + rf);
     syncMarketToDb(updatedMarket);
     syncPositionToDb(userId.current, mid, null);
     recordTradeInDb(userId.current, mid, m.c.sym, pp.side, pp.sh, rf, 'SELL', null, pnl);
+    // Credit balance and profit in DB atomically
+    if (supabase) {
+      await supabase.rpc('labs_adjust_balance', { p_user_id: userId.current, p_delta: rf });
+      await supabase.rpc('labs_adjust_profit', { p_user_id: userId.current, p_delta: pnl });
+    }
     // Refresh leaderboard after fallback sync
     setTimeout(refreshLeaderboard, 500);
-  }, [pos, mks, refreshLeaderboard]);
+  }, [pos, mks, memeUser, refreshLeaderboard]);
 
-  const onClaim = useCallback((mid) => {
+  const onClaim = useCallback(async (mid) => {
+    if (!memeUser) { setShowDeposit(true); return; }
     const pp = pos[mid];
     const m = mks.find(x => x.id===mid);
     if (!pp || !m || m.st!=="RES") return;
@@ -1459,29 +1680,48 @@ function App() {
     setPos(p => ({ ...p, [mid]:{ ...p[mid], claimed:true }}));
     setHist(h => [...h, { sym:m.c.sym, rn:m.rn, side:pp.side, result:m.res, rw, inv:pp.inv }]);
 
-    // Update streak
+    // Update wins/losses and streak
     if (won) {
+      setWins(w => w + 1);
       setStreak(s => {
         const newStreak = s + 1;
         setBestStreak(bs => Math.max(bs, newStreak));
         return newStreak;
       });
     } else {
+      setLosses(l => l + 1);
       setStreak(0);
     }
 
-    // Sync to Supabase
-    const claimedPosition = { ...pp, claimed: true };
-    syncPositionToDb(userId.current, mid, claimedPosition);
+    // Remove position from DB after claiming
+    syncPositionToDb(userId.current, mid, null);
     recordTradeInDb(userId.current, mid, m.c.sym, pp.side, pp.sh, rw, 'CLAIM', m.res, pnl);
-  }, [pos, mks]);
 
-  const ranked = [...mks].sort((a,b) => {
-    const myA = pos[a.id] ? pos[a.id].inv : 0;
-    const myB = pos[b.id] ? pos[b.id].inv : 0;
-    if (myA !== myB) return myB - myA;
-    return marketPool(b.qY, b.qN, b.b) - marketPool(a.qY, a.qN, a.b);
-  });
+    // Credit claim reward to DB atomically
+    if (supabase && rw > 0) {
+      await supabase.rpc('labs_adjust_balance', { p_user_id: userId.current, p_delta: rw });
+    }
+    // Track profit (pnl = reward - invested)
+    if (supabase) {
+      await supabase.rpc('labs_adjust_profit', { p_user_id: userId.current, p_delta: pnl });
+      setTimeout(refreshLeaderboard, 500);
+    }
+  }, [pos, mks, memeUser, refreshLeaderboard]);
+
+  // Build display list: resolved with unclaimed position takes priority over OPEN for same coin
+  const ranked = useMemo(() => {
+    const resByCoin = {};
+    mks.forEach(m => {
+      if (m.st === "RES" && pos[m.id] && !pos[m.id].claimed) resByCoin[m.c.sym] = m;
+    });
+    // Filter: show resolved (unclaimed) instead of OPEN for same coin
+    const filtered = mks.filter(m => {
+      if (m.st === "OPEN" && resByCoin[m.c.sym]) return false; // hide OPEN, show RES instead
+      if (m.st === "RES" && (!pos[m.id] || pos[m.id].claimed)) return false; // hide claimed/no-position RES
+      return true;
+    });
+    return filtered.sort((a,b) => yP(b.qY, b.qN, b.b) - yP(a.qY, a.qN, a.b));
+  }, [mks, pos]);
 
   if (loading) {
     return (
@@ -1512,7 +1752,7 @@ function App() {
           display:"flex", alignItems:"center", gap:12,
           animation:"slideDown 0.3s ease-out"
         }}>
-          <style>{`@keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }`}</style>
+          <style>{`@keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } } @keyframes timerPulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } } @keyframes priceFlash { 0% { opacity:1; transform:scale(1.2); } 30% { opacity:1; transform:scale(1); } 100% { opacity:1; transform:scale(1); } }`}</style>
           <span style={{ fontSize:"1.5em" }}>{notification.result === "YES" ? "📈" : "📉"}</span>
           <div>
             <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em" }}>
@@ -1550,8 +1790,8 @@ function App() {
             border:"1px solid #ffffff15", cursor:"pointer"
           }}>
             {!isMobile && <span style={{
-              fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", color:"#ffffff60"
-            }}>LABS:</span>}
+              fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", color:"#fff"
+            }}>🧪 LABS:</span>}
             <span style={{
               ...gld, fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".95em" : "1.05em"
             }}>{bal.toLocaleString()}</span>
@@ -1584,13 +1824,16 @@ function App() {
           <div style={{
             fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? "1.3em" : "1.6em",
             textTransform:"uppercase", textShadow:"0 2px 4px rgba(0,0,0,.5)"
-          }}>Memecoin Arena</div>
+          }}>Memecoin Arena{!isProd && <span style={{
+            fontSize:".45em", background:"#ff4444", color:"#fff", padding:"2px 8px",
+            borderRadius:4, marginLeft:10, verticalAlign:"middle", letterSpacing:1
+          }}>DEV</span>}</div>
           <div style={{
             fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".75em" : ".9em",
             color:"#ffffff60"
           }}>
             {isMobile ? "24h prediction rounds" : "Predict targets. Vote with conviction on your favorite memes. "}
-            {!isMobile && <span style={{ color:"#f7931a" }}>24h rounds</span>}
+            {!isMobile && <span style={{ ...gld }}>24h rounds.</span>}
           </div>
         </div>
 
@@ -1609,8 +1852,11 @@ function App() {
             {ranked.map(m =>
               <Card key={m.id} m={m} bal={bal} streak={streak}
                 pos={pos[m.id]||null}
+                players={marketPlayers[m.id]||[]}
                 onBuy={onBuy} onSell={onSell} onClaim={onClaim}
-                isMobile={isMobile}/>
+                isMobile={isMobile}
+                memeUser={memeUser}
+                onLoginRequired={() => setShowDeposit(true)}/>
             )}
           </div>
 
@@ -1629,9 +1875,20 @@ function App() {
                 padding:"12px 16px",
                 fontFamily:"'Londrina Solid',sans-serif",
                 textTransform:"uppercase", background:"#191f29",
-                borderBottom:"1px solid #ffffff0d"
-              }}>CONVICTION BOARD</div>
-              {ranked.map((m,i) => (
+                borderBottom:"1px solid #ffffff0d",
+                display:"flex", alignItems:"center"
+              }}>
+                <span style={{ flex:1 }}>CONVICTION BOARD</span>
+                <div style={{ display:"flex", fontFamily:"'Jersey 25',sans-serif", fontSize:".6em", color:"#ffffff30", textTransform:"uppercase" }}>
+                  <span style={{ width:80, textAlign:"right", paddingRight:10 }}>streak</span>
+                  <span style={{ width:50, textAlign:"right" }}>pool</span>
+                </div>
+              </div>
+              {ranked.map((m,i) => {
+                const coinForm = (marketHistory || [])
+                  .filter(h => h.coin_symbol === m.c.sym)
+                  .slice(0, 5);
+                return (
                 <div key={m.id} style={{
                   display:"flex", alignItems:"center", gap:10,
                   padding:"10px 16px", background:"#191f29",
@@ -1645,23 +1902,30 @@ function App() {
                   <div style={{ flex:1 }}>
                     <div style={{
                       fontFamily:"'Londrina Solid',sans-serif", fontSize:".9em"
-                    }}>${m.c.sym}</div>
+                    }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none" }}>${m.c.sym}</a></div>
                     <div style={{
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
                       color:"#ffffff50"
-                    }}>{yP(m.qY,m.qN,m.b)}% say UP</div>
+                    }}>{yP(m.qY,m.qN,m.b)}% on UP</div>
                   </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{
-                      ...gld, fontFamily:"'Jersey 25',sans-serif"
-                    }}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</div>
-                    <div style={{
-                      fontFamily:"'Jersey 25',sans-serif",
-                      fontSize:".6em", color:"#ffffff40"
-                    }}>memescore</div>
-                  </div>
+                  {coinForm.length > 0 && (
+                    <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"flex-end", width:80 }}>
+                      {coinForm.map((h,j) => (
+                        <div key={j} style={{
+                          width:14, height:14, borderRadius:"50%",
+                          background: h.result === "YES" ? "#22c55e" : "#ef4444",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:8, fontWeight:700, color:"#fff"
+                        }}>{h.result === "YES" ? "↑" : "↓"}</div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{
+                    ...gld, fontFamily:"'Jersey 25',sans-serif", textAlign:"right", minWidth:50
+                  }}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div style={{
@@ -1673,7 +1937,7 @@ function App() {
                 fontFamily:"'Londrina Solid',sans-serif",
                 textTransform:"uppercase", background:"#191f29",
                 borderBottom:"1px solid #ffffff0d"
-              }}>TOP TRADERS</div>
+              }}>TOP GAINS</div>
               {(() => {
                 // Generate fun anonymous names from user ID
                 const anonName = (id) => {
@@ -1686,10 +1950,11 @@ function App() {
                 const currentUser = {
                   id: userId.current,
                   name: "You",
+                  profit: myProfit,
                   vol: totalVolume,
                   w: wins,
                   l: losses,
-                  img: null,
+                  img: memeUser?.image || null,
                   isCurrentUser: true
                 };
                 const leaders = leaderboard
@@ -1697,13 +1962,14 @@ function App() {
                   .map(u => ({
                     id: u.id,
                     name: u.username || anonName(u.id),
+                    profit: u.total_profit || 0,
                     vol: u.total_volume || 0,
                     w: u.wins || 0,
                     l: u.losses || 0,
                     img: u.profile_image,
                     isCurrentUser: false
                   }));
-                return [...leaders, currentUser].sort((a,b) => b.vol - a.vol).slice(0,5);
+                return [...leaders, currentUser].sort((a,b) => b.profit - a.profit).slice(0,5);
               })().map((p,i) => (
                 <div key={p.id || i} style={{
                   display:"flex", alignItems:"center", gap:10,
@@ -1737,8 +2003,9 @@ function App() {
                     }}>{p.w}W {p.l}L</div>
                   </div>
                   <div style={{
-                    ...gld, fontFamily:"'Jersey 25',sans-serif", fontSize:".9em"
-                  }}>{p.vol.toLocaleString()}</div>
+                    fontFamily:"'Jersey 25',sans-serif", fontSize:".9em",
+                    color: p.profit >= 0 ? "#4ade80" : "#f65e5e"
+                  }}>{p.profit >= 0 ? "+" : ""}{p.profit.toLocaleString()}</div>
                 </div>
               ))}
             </div>
@@ -1773,41 +2040,6 @@ function App() {
               </div>
             )}
 
-            {marketHistory.length > 0 && (
-              <div style={{
-                background:"linear-gradient(360deg,#212936,#4e596c)",
-                borderRadius:25, overflow:"hidden"
-              }}>
-                <div style={{
-                  padding:"12px 16px",
-                  fontFamily:"'Londrina Solid',sans-serif",
-                  textTransform:"uppercase", background:"#191f29",
-                  borderBottom:"1px solid #ffffff0d"
-                }}>RECENT RESULTS</div>
-                {marketHistory.map((m,i) => (
-                  <div key={m.id} style={{
-                    display:"flex", alignItems:"center", gap:10,
-                    padding:"10px 16px", background:"#191f29",
-                    borderBottom:"1px solid #ffffff08"
-                  }}>
-                    <CoinImg src={m.coin_image} color={m.coin_color} size={24} sym={m.coin_symbol}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{
-                        fontFamily:"'Jersey 25',sans-serif", fontSize:".85em"
-                      }}>${m.coin_symbol}</div>
-                      <div style={{
-                        fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
-                        color:"#ffffff40"
-                      }}>{fM(m.start_mc)} → {fM(m.current_mc)}</div>
-                    </div>
-                    <span style={{
-                      fontFamily:"'Jersey 25',sans-serif",
-                      color: m.result==="YES" ? "#b6ffac" : "#f65e5e"
-                    }}>{m.result==="YES" ? "UP ↑" : "DOWN ↓"}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1815,9 +2047,14 @@ function App() {
       <DepositModal
         isOpen={showDeposit}
         onClose={() => setShowDeposit(false)}
-        onDeposit={(amt, newLabsBal, newMemescore) => {
-          setBal(newLabsBal);
+        onDeposit={async (amount, depositMode, newMemescore) => {
+          const delta = depositMode === "deposit" ? amount : -amount;
+          setBal(b => b + delta);
           setMemescore(newMemescore);
+          // Update DB balance atomically
+          if (supabase) {
+            await supabase.rpc('labs_adjust_balance', { p_user_id: userId.current, p_delta: delta });
+          }
         }}
         memeUser={memeUser}
         memescore={memescore}
