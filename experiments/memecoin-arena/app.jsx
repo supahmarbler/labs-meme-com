@@ -2075,6 +2075,7 @@ function App() {
           { sym:"PENGU", tier:"bronze", img:"https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
         ];
         const tierColors = { gold:"#f7931a", silver:"#94a3b8", bronze:"#b45309" };
+        const tierDark = { gold:"#b5690e", silver:"#6b7a8a", bronze:"#7a3906" };
         const tierLabels = { gold:"GOLD", silver:"SILVER", bronze:"BRONZE" };
         return (
           <div onClick={() => setShowProfile(false)} style={{
@@ -2135,46 +2136,46 @@ function App() {
               {/* Card grid */}
               <div style={{
                 display:"grid",
-                gridTemplateColumns:"repeat(auto-fill, minmax(62px, 1fr))",
-                gap:8
+                gridTemplateColumns:"repeat(auto-fill, minmax(90px, 1fr))",
+                gap:12
               }}>
-                {holdings.map(h => (
-                  <div key={h.sym} style={{
-                    background:"linear-gradient(180deg,#1e2a3a,#141c28)",
-                    border:`2px solid ${tierColors[h.tier]}`,
-                    borderRadius:12, overflow:"hidden", cursor:"default",
-                    transition:"transform 0.2s ease, box-shadow 0.2s ease"
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow=`0 6px 20px ${tierColors[h.tier]}44`; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="none"; }}
-                  >
-                    {/* Coin image + tier badge */}
-                    <div style={{ position:"relative", aspectRatio:"1", overflow:"hidden" }}>
-                      <img src={h.img} alt={h.sym} style={{
-                        width:"100%", height:"100%", objectFit:"cover", display:"block"
-                      }}/>
-                      <span style={{
-                        position:"absolute", top:4, right:4, fontSize:".5em",
-                        fontFamily:"'Jersey 25',sans-serif",
-                        background:tierColors[h.tier]+"cc", color:"#fff",
-                        padding:"1px 5px", borderRadius:3, letterSpacing:1
-                      }}>{tierLabels[h.tier]}</span>
+                {holdings.map(h => {
+                  const c = tierColors[h.tier];
+                  const cDark = tierDark[h.tier];
+                  return (
+                    <div key={h.sym} style={{
+                      background:`linear-gradient(180deg, ${c} 0%, ${cDark} 100%)`,
+                      borderRadius:10, padding:"5px 5px 0", cursor:"default",
+                      transition:"transform 0.2s ease, box-shadow 0.2s ease",
+                      boxShadow:`0 3px 8px ${cDark}88`
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow=`0 8px 24px ${cDark}aa`; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow=`0 3px 8px ${cDark}88`; }}
+                    >
+                      {/* Image area */}
+                      <div style={{
+                        background:"#111", borderRadius:6, overflow:"hidden",
+                        aspectRatio:"1", position:"relative"
+                      }}>
+                        <img src={h.img} alt={h.sym} style={{
+                          width:"100%", height:"100%", objectFit:"cover", display:"block"
+                        }}/>
+                      </div>
+                      {/* Footer bar */}
+                      <div style={{
+                        background:cDark, borderRadius:"0 0 6px 6px", marginTop:4,
+                        padding:"5px 0", display:"flex", alignItems:"center", justifyContent:"center"
+                      }}>
+                        <div style={{
+                          width:22, height:22, borderRadius:4,
+                          background:c+"44", display:"flex", alignItems:"center", justifyContent:"center"
+                        }}>
+                          <span style={{ fontSize:".65em", filter:"brightness(2)" }}>💎</span>
+                        </div>
+                      </div>
                     </div>
-                    {/* Footer */}
-                    <div style={{
-                      background:tierColors[h.tier]+"18",
-                      borderTop:`1px solid ${tierColors[h.tier]}33`,
-                      padding:"4px 8px", display:"flex", alignItems:"center",
-                      justifyContent:"space-between"
-                    }}>
-                      <span style={{
-                        fontFamily:"'Londrina Solid',sans-serif", fontSize:".75em",
-                        color:tierColors[h.tier]
-                      }}>${h.sym}</span>
-                      <span style={{ fontSize:".6em" }}>💎</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
