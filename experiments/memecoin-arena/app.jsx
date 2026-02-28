@@ -2074,9 +2074,18 @@ function App() {
           { sym:"JOE", tier:"silver", img:"https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
           { sym:"PENGU", tier:"bronze", img:"https://cdn.meme.com/images-4/meme_assets/2024-12-17/1734446159208EJOa.png" },
         ];
-        const tierColors = { gold:"#f7931a", silver:"#94a3b8", bronze:"#b45309" };
-        const tierDark = { gold:"#b5690e", silver:"#6b7a8a", bronze:"#7a3906" };
-        const tierLabels = { gold:"GOLD", silver:"SILVER", bronze:"BRONZE" };
+        // Exact meme.com farm color system
+        const tierFrame = {
+          gold: ["#ff7900","#ffcb15"],    // gradient bottom → top
+          silver: ["#e900d7","#fe6aff"],
+          bronze: ["#69b69b","#d4ffed"]
+        };
+        const tierDiamond = {
+          gold: ["#ff7900","#993e00"],    // outer, inner
+          silver: ["#ff14f9","#a600b4"],
+          bronze: ["#69b69b","#008a75"]
+        };
+        const tierHover = { gold:"#ff7900", silver:"#d437e5", bronze:"#8ddddf" };
         return (
           <div onClick={() => setShowProfile(false)} style={{
             position:"fixed", inset:0, background:"rgba(0,0,0,0.85)",
@@ -2133,45 +2142,67 @@ function App() {
                 color:"#ffffff40", letterSpacing:2, marginBottom:14
               }}>MEME INVENTORY</div>
 
-              {/* Card grid */}
+              {/* Card grid — exact meme.com farm card replica */}
               <div style={{
-                display:"grid",
-                gridTemplateColumns:"repeat(auto-fill, minmax(90px, 1fr))",
-                gap:12
+                display:"flex", flexWrap:"wrap", gap:16, justifyContent:"center"
               }}>
                 {holdings.map(h => {
-                  const c = tierColors[h.tier];
-                  const cDark = tierDark[h.tier];
+                  const [f1,f2] = tierFrame[h.tier];
+                  const [dfOuter,dfInner] = tierDiamond[h.tier];
+                  const sz = 88; // coin card size in px
+                  const bw = 3;  // border width
+                  const br = 7;  // border radius
+                  const ibr = 5; // inner border radius
+                  const ibw = 2; // inner border width
                   return (
                     <div key={h.sym} style={{
-                      background:`linear-gradient(180deg, ${c} 0%, ${cDark} 100%)`,
-                      borderRadius:10, padding:"5px 5px 0", cursor:"default",
-                      transition:"transform 0.2s ease, box-shadow 0.2s ease",
-                      boxShadow:`0 3px 8px ${cDark}88`
+                      display:"flex", flexDirection:"column", alignItems:"center",
+                      filter:"drop-shadow(0px 3px 4px #000)",
+                      transition:"filter 0.2s ease-in-out", cursor:"default"
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow=`0 8px 24px ${cDark}aa`; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow=`0 3px 8px ${cDark}88`; }}
+                    onMouseEnter={e => { e.currentTarget.style.filter=`drop-shadow(0px 0px 5px ${tierHover[h.tier]})`; }}
+                    onMouseLeave={e => { e.currentTarget.style.filter="drop-shadow(0px 3px 4px #000)"; }}
                     >
-                      {/* Image area */}
+                      {/* Card frame */}
                       <div style={{
-                        background:"#111", borderRadius:6, overflow:"hidden",
-                        aspectRatio:"1", position:"relative"
+                        width:sz, height:sz, position:"relative", borderRadius:br
                       }}>
-                        <img src={h.img} alt={h.sym} style={{
-                          width:"100%", height:"100%", objectFit:"cover", display:"block"
-                        }}/>
-                      </div>
-                      {/* Footer bar */}
-                      <div style={{
-                        background:cDark, borderRadius:"0 0 6px 6px", marginTop:4,
-                        padding:"5px 0", display:"flex", alignItems:"center", justifyContent:"center"
-                      }}>
+                        {/* Gradient border */}
                         <div style={{
-                          width:22, height:22, borderRadius:4,
-                          background:c+"44", display:"flex", alignItems:"center", justifyContent:"center"
+                          position:"absolute", inset:0, borderRadius:br,
+                          background:`linear-gradient(0deg, ${f1}, ${f2})`
+                        }}/>
+                        {/* Inner dark bg */}
+                        <div style={{
+                          position:"absolute", top:bw, left:bw, right:bw, bottom:bw,
+                          borderRadius:ibr, background:"#2a2929",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          overflow:"hidden"
                         }}>
-                          <span style={{ fontSize:".65em", filter:"brightness(2)" }}>💎</span>
+                          {/* Coin image */}
+                          <img src={h.img} alt={h.sym} style={{
+                            width:`calc(100% - ${ibw*2}px)`, height:`calc(100% - ${ibw*2}px)`,
+                            objectFit:"cover", borderRadius:ibr, display:"block"
+                          }}/>
                         </div>
+                      </div>
+                      {/* Diamond frame (trapezoid tab) */}
+                      <div style={{
+                        width:sz, height:22, position:"relative",
+                        clipPath:"polygon(10% 0%, 10% 60%, 20% 100%, 80% 100%, 90% 60%, 90% 0%)",
+                        background:dfOuter,
+                        display:"flex", justifyContent:"center", alignItems:"center"
+                      }}>
+                        {/* Inner darker trapezoid */}
+                        <div style={{
+                          position:"absolute", inset:0,
+                          clipPath:`polygon(calc(10% + ${bw}px) 0%, calc(10% + ${bw}px) calc(60% - ${bw/2}px), calc(20% + ${bw/2}px) calc(100% - ${bw}px), calc(80% - ${bw/2}px) calc(100% - ${bw}px), calc(90% - ${bw}px) calc(60% - ${bw/2}px), calc(90% - ${bw}px) 0%)`,
+                          background:dfInner
+                        }}/>
+                        {/* Diamond icon */}
+                        <svg width="16" height="11" viewBox="0 0 65 43" fill="none" style={{ zIndex:1, marginBottom:1 }}>
+                          <polygon points="13,0 52,0 65,16 32.5,43 0,16" fill="white"/>
+                        </svg>
                       </div>
                     </div>
                   );
