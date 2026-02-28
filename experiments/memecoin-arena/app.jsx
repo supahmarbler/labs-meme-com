@@ -2135,46 +2135,43 @@ function App() {
               {/* Card grid */}
               <div style={{
                 display:"grid",
-                gridTemplateColumns:"repeat(auto-fill, minmax(110px, 1fr))",
-                gap:12
+                gridTemplateColumns:"repeat(auto-fill, minmax(88px, 1fr))",
+                gap:10
               }}>
                 {holdings.map(h => (
                   <div key={h.sym} style={{
                     background:"linear-gradient(180deg,#1e2a3a,#141c28)",
                     border:`2px solid ${tierColors[h.tier]}`,
-                    borderRadius:14, overflow:"hidden", cursor:"default",
+                    borderRadius:12, overflow:"hidden", cursor:"default",
                     transition:"transform 0.2s ease, box-shadow 0.2s ease"
                   }}
                   onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow=`0 6px 20px ${tierColors[h.tier]}44`; }}
                   onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="none"; }}
                   >
-                    {/* Tier badge */}
-                    <div style={{ position:"relative" }}>
+                    {/* Coin image + tier badge */}
+                    <div style={{ position:"relative", aspectRatio:"1", overflow:"hidden" }}>
+                      <img src={h.img} alt={h.sym} style={{
+                        width:"100%", height:"100%", objectFit:"cover", display:"block"
+                      }}/>
                       <span style={{
-                        position:"absolute", top:6, right:6, fontSize:".55em",
+                        position:"absolute", top:4, right:4, fontSize:".5em",
                         fontFamily:"'Jersey 25',sans-serif",
-                        background:tierColors[h.tier]+"33", color:tierColors[h.tier],
-                        padding:"1px 6px", borderRadius:4, letterSpacing:1
+                        background:tierColors[h.tier]+"cc", color:"#fff",
+                        padding:"1px 5px", borderRadius:3, letterSpacing:1
                       }}>{tierLabels[h.tier]}</span>
-                    </div>
-                    {/* Coin image */}
-                    <div style={{
-                      padding:"16px 12px 10px", display:"flex", justifyContent:"center"
-                    }}>
-                      <CoinImg src={h.img} color={h.color} size={64} sym={h.sym}/>
                     </div>
                     {/* Footer */}
                     <div style={{
                       background:tierColors[h.tier]+"18",
                       borderTop:`1px solid ${tierColors[h.tier]}33`,
-                      padding:"6px 10px", display:"flex", alignItems:"center",
+                      padding:"4px 8px", display:"flex", alignItems:"center",
                       justifyContent:"space-between"
                     }}>
                       <span style={{
-                        fontFamily:"'Londrina Solid',sans-serif", fontSize:".85em",
+                        fontFamily:"'Londrina Solid',sans-serif", fontSize:".75em",
                         color:tierColors[h.tier]
                       }}>${h.sym}</span>
-                      <span style={{ fontSize:".7em" }}>💎</span>
+                      <span style={{ fontSize:".6em" }}>💎</span>
                     </div>
                   </div>
                 ))}
