@@ -2135,8 +2135,8 @@ function App() {
               {/* Card grid */}
               <div style={{
                 display:"grid",
-                gridTemplateColumns:"repeat(auto-fill, minmax(88px, 1fr))",
-                gap:10
+                gridTemplateColumns:"repeat(auto-fill, minmax(62px, 1fr))",
+                gap:8
               }}>
                 {holdings.map(h => (
                   <div key={h.sym} style={{
