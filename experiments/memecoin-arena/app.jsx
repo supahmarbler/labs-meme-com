@@ -2179,7 +2179,7 @@ function App() {
                           color:"#fff", textShadow:"0 1px 2px rgba(0,0,0,.4)"
                         }}>${h.sym}</div>
                         <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
-                          width:16, height:11
+                          width:13, height:9
                         }}/>
                       </div>
                     </div>
