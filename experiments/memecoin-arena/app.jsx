@@ -2178,10 +2178,9 @@ function App() {
                           fontFamily:"'Londrina Solid',sans-serif", fontSize:".75em",
                           color:"#fff", textShadow:"0 1px 2px rgba(0,0,0,.4)"
                         }}>${h.sym}</div>
-                        <div style={{
-                          width:18, height:18, display:"flex", alignItems:"center",
-                          justifyContent:"center", fontSize:10
-                        }}>💎</div>
+                        <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
+                          width:16, height:11
+                        }}/>
                       </div>
                     </div>
                   );
