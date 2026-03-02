@@ -6,7 +6,7 @@ create table labs_users (
   id uuid primary key default gen_random_uuid(),
   meme_user_id int unique,
   username text,
-  labs_balance int default 10000,
+  labs_balance int default 0,
   created_at timestamptz default now()
 );
 

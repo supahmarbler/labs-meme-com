@@ -183,9 +183,7 @@ BEGIN
   WHERE id = p_user_id FOR UPDATE;
 
   IF NOT FOUND THEN
-    -- Create user if doesn't exist
-    INSERT INTO labs_users (id, labs_balance) VALUES (p_user_id, 10000)
-    RETURNING * INTO v_user;
+    RETURN json_build_object('success', false, 'error', 'user_not_found');
   END IF;
 
   IF v_user.labs_balance < p_amount THEN
