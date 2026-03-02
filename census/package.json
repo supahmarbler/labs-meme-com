@@ -1,0 +1,16 @@
+{
+  "name": "memecoin-census",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Weekly on-chain census for Memecoin Arena holdings",
+  "scripts": {
+    "census": "node run-census.js",
+    "seed": "node seed-coins.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "ethers": "^6.13.0",
+    "pg": "^8.13.0"
+  }
+}
