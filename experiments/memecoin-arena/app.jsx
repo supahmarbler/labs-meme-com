@@ -88,30 +88,35 @@ const fetchLabsBalance = async (authToken) => {
   }
 };
 
-// Fetch daily treasure chest quest from meme.com farming quests
-const fetchChestQuest = async (authToken) => {
+// Fetch all farming quests from meme.com (single call, used for chest + retweet)
+const fetchFarmingQuests = async (authToken) => {
   try {
     const res = await fetch(`${MEME_API}/farming-quests/list_available`, {
       headers: { "Authorization": `Bearer ${authToken}` }
     });
     if (!res.ok) return null;
-    const data = await res.json();
-    // Response is grouped: available_quests, in_progress_quests, claimable_quests, completed_quests
-    const allQuests = [
-      ...(data.available_quests || []),
-      ...(data.in_progress_quests || []),
-      ...(data.claimable_quests || []),
-      ...(data.completed_quests || [])
-    ];
-    const quest = allQuests.find(q => q.quest_type === "TREASURE_CHEST");
-    if (!quest) return null;
-    // Mark whether it's in the available list (ready to claim)
-    quest._isAvailable = (data.available_quests || []).some(q => q.quest_type === "TREASURE_CHEST");
-    return quest;
+    return await res.json();
   } catch (e) {
-    console.log("Failed to fetch chest quest:", e);
+    console.log("Failed to fetch farming quests:", e);
     return null;
   }
+};
+
+// Extract a quest by type from the grouped farming quests response
+const extractQuest = (data, questType) => {
+  if (!data) return null;
+  const allQuests = [
+    ...(data.available_quests || []),
+    ...(data.in_progress_quests || []),
+    ...(data.claimable_quests || []),
+    ...(data.completed_quests || [])
+  ];
+  const quest = allQuests.find(q => q.quest_type === questType);
+  if (!quest) return null;
+  quest._isAvailable = (data.available_quests || []).some(q => q.quest_type === questType);
+  quest._isInProgress = (data.in_progress_quests || []).some(q => q.quest_type === questType);
+  quest._isCompleted = (data.completed_quests || []).some(q => q.quest_type === questType);
+  return quest;
 };
 
 // Claim daily treasure chest (chestIndex = 0, 1, or 2)
@@ -138,6 +143,90 @@ const claimChest = async (authToken, questId, chestIndex = 0) => {
     console.error("Chest claim failed:", e);
     return null;
   }
+};
+
+// Fetch the current retweet quest tweet
+const fetchQuestTweet = async (authToken, memeUserId) => {
+  try {
+    const res = await fetch(`${MEME_API}/farm/get_quest_tweet?meme_user_id=${memeUserId}`, {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.log("Failed to fetch quest tweet:", e);
+    return null;
+  }
+};
+
+// Claim retweet reward points
+const claimRetweetReward = async (authToken, tweetIdInternal) => {
+  try {
+    const res = await fetch(`${MEME_API}/farm/claim_retweet_reward_points`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ tweet_id_internal: tweetIdInternal })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Retweet claim failed");
+    }
+    return await res.json();
+  } catch (e) {
+    console.error("Retweet claim failed:", e);
+    return null;
+  }
+};
+
+// Fetch prediction markets from meme.com
+const fetchPredictionMarkets = async (authToken) => {
+  try {
+    const headers = {};
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    const res = await fetch(`${MEME_API}/prediction_markets/get_markets?page=1&page_size=30`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items || []).filter(m => m.market_type === "SINGLE");
+  } catch (e) {
+    console.log("Failed to fetch prediction markets:", e);
+    return [];
+  }
+};
+
+// Buy prediction market shares
+const pmBuy = async (authToken, marketId, amount, sharesType) => {
+  const res = await fetch(`${MEME_API}/prediction_markets/buy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+    body: JSON.stringify({ market_id: marketId, memescore_amount: amount, shares_type: sharesType })
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t || "Buy failed"); }
+  return res.json();
+};
+
+// Sell prediction market shares (100% sell)
+const pmSell = async (authToken, marketId, sharesType, expectedRefund) => {
+  const res = await fetch(`${MEME_API}/prediction_markets/sell`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+    body: JSON.stringify({ market_id: marketId, shares_percentage: "1", shares_type: sharesType, expected_refund: expectedRefund })
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t || "Sell failed"); }
+  return res.json();
+};
+
+// Claim resolved prediction market
+const pmClaim = async (authToken, marketId) => {
+  const res = await fetch(`${MEME_API}/prediction_markets/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+    body: JSON.stringify({ market_id: marketId })
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t || "Claim failed"); }
+  return res.json();
 };
 
 // Get user ID - use meme.com userId if logged in, otherwise generate anonymous
@@ -176,13 +265,15 @@ const saveState = (state) => {
 const syncMarketToDb = async (m, retries = 2) => {
   if (!supabase) return false;
   try {
+    const isTrends = m.type === "TRENDS";
     const payload = {
       id: m.id,
       coin_symbol: m.c.sym,
       coin_name: m.c.name,
       coin_image: m.c.img,
       coin_color: m.c.color,
-      current_mc: m.mc,
+      // TRENDS scores are set only by the bot — never overwrite from frontend
+      ...(isTrends ? {} : { current_mc: m.mc }),
       b: m.b,
       q_yes: Math.max(0, m.qY - m.b),
       q_no: Math.max(0, m.qN - m.b),
@@ -193,14 +284,14 @@ const syncMarketToDb = async (m, retries = 2) => {
       fee_pool: m.fp || 0,
       expires_at: new Date(m.ea).toISOString(),
       price_updated_at: new Date().toISOString(),
-      ...(m.type === "BATTLE" ? {
-        market_type: "BATTLE",
+      ...((m.type === "BATTLE" || isTrends) ? {
+        market_type: m.type,
         coin_b_symbol: m.cB.sym,
         coin_b_name: m.cB.name,
         coin_b_image: m.cB.img,
         coin_b_color: m.cB.color,
         start_mc_b: m.startMcB,
-        current_mc_b: m.mcB
+        ...(isTrends ? {} : { current_mc_b: m.mcB })
       } : {})
     };
     const { error } = await supabase
@@ -464,7 +555,7 @@ const loadMarketHistoryFromDb = async () => {
   }
 };
 
-// Load user's recent trade history from database (claimed trades)
+// Load user's recent trade history from database
 const loadTradeHistoryFromDb = async (userId) => {
   if (!supabase || !userId) return null;
   try {
@@ -472,16 +563,16 @@ const loadTradeHistoryFromDb = async (userId) => {
       .from("labs_trades")
       .select("coin_symbol, side, amount, trade_type, result, pnl")
       .eq("user_id", userId)
-      .eq("trade_type", "CLAIM")
       .order("created_at", { ascending: false })
       .limit(10);
     if (error) throw error;
     return (data || []).map(t => ({
       sym: t.coin_symbol,
       side: t.side,
+      type: t.trade_type,
       result: t.result,
-      inv: t.amount,
-      rw: t.pnl > 0 ? t.amount + t.pnl : 0
+      amount: t.amount,
+      pnl: t.pnl
     }));
   } catch (e) {
     console.error("Trade history load failed:", e);
@@ -493,7 +584,7 @@ const loadTradeHistoryFromDb = async (userId) => {
 const dedup = (mks) => {
   const openByKey = {};
   const result = [];
-  const dedupKey = (m) => m.type === "BATTLE" ? battlePairKey(m.c.sym, m.cB.sym) : m.c.sym;
+  const dedupKey = (m) => (m.type === "BATTLE" || m.type === "TRENDS") ? battlePairKey(m.c.sym, m.cB.sym) : m.c.sym;
   // First pass: find highest-round OPEN market per key
   mks.forEach(m => {
     if (m.st === "OPEN") {
@@ -543,8 +634,8 @@ const dbMarketToLocal = (db, coinData, coinDataB) => {
     ppl: Number(db.players) || 0,
     ea: new Date(db.expires_at).getTime()
   };
-  if (db.market_type === "BATTLE") {
-    base.type = "BATTLE";
+  if (db.market_type === "BATTLE" || db.market_type === "TRENDS") {
+    base.type = db.market_type;
     base.cB = {
       sym: db.coin_b_symbol,
       name: db.coin_b_name,
@@ -554,27 +645,17 @@ const dbMarketToLocal = (db, coinData, coinDataB) => {
     };
     base.mcB = Number(db.current_mc_b) || 0;
     base.startMcB = Number(db.start_mc_b) || 0;
+    if (db.trend_term_a) base.trendTermA = db.trend_term_a;
+    if (db.trend_term_b) base.trendTermB = db.trend_term_b;
   }
   return base;
 };
 
-// meme.com API (for initial coin data)
+// meme.com API
 const API_BASE = "https://api.v2.meme.com";
-const COIN_SYMBOLS = ["joe", "stnk", "pepe", "mog"];
-const COIN_COLORS = { joe:"#f7931a", stnk:"#84CC16", pepe:"#4ADE80", mog:"#1e3a5f" };
-
-// CoinGecko Pro for reliable price updates
-const CG_API = "https://api.coingecko.com/api/v3";
-const CG_HEADERS = {};
-const COINGECKO_IDS = {
-  joe: "joe-coin",
-  stnk: "stonks-4",
-  pepe: "pepe",
-  mog: "mog-coin"
-};
 const MEME_SLUGS = { JOE:"joe-coin", STNK:"stonks-4", PEPE:"pepe", MOG:"mog-coin" };
 
-// Battle coins pool (33 coins, no overlap with UP/DOWN)
+// Coin pool — UP/DOWN picks random coins, Battle picks matchups
 const BATTLE_COINS = {
   PENGU:"pudgy-penguins", DOG:"dog-go-to-the-moon", PAIN:"pain",
   BONK:"bonk", REKT:"rekt-2", ELONRWA:"elonrwa",
@@ -607,14 +688,6 @@ const CG_PRO_API = "https://pro-api.coingecko.com/api/v3";
 const CG_PRO_KEY = "CG-PWFqjufsd6mZpoNsR62ukuiT";
 const CG_PRO_HEADERS = { "x-cg-pro-api-key": CG_PRO_KEY };
 let lastBattlePriceCall = 0;
-
-// Fallback coin data when APIs are rate limited
-const FALLBACK_COINS = [
-  { sym: "JOE", name: "Joe Coin", mcap: 7000000, color: "#f7931a", img: "https://cdn.meme.com/images/meme_assets/2025-07-16/1752687196279dnFN.png" },
-  { sym: "STNK", name: "Stonks", mcap: 6000000, color: "#3d7a1c", img: "https://cdn.meme.com/images/meme_assets/2025-10-24/17613344323935piQ.png" },
-  { sym: "PEPE", name: "Pepe", mcap: 1700000000, color: "#4ADE80", img: "https://cdn.meme.com/images/meme_assets/2024-04-10/1712779740059DXOD.png" },
-  { sym: "MOG", name: "Mog Coin", mcap: 66000000, color: "#1e3a5f", img: "https://cdn.meme.com/images/meme_assets/2024-04-15/1713170597024m28Z.png" }
-];
 
 // --- On-demand per-user wallet census ---
 
@@ -809,106 +882,6 @@ async function fetchBattleCoinMetadata() {
   }
 }
 
-async function fetchCoins() {
-  try {
-    // Get metadata from meme.com for UPDOWN coins only
-    const res = await fetch(`${API_BASE}/farm/coins_leaderboard?page=1&page_size=100`);
-    const data = await res.json();
-    const allItems = data.items || [];
-
-    const coins = allItems.filter(c => COIN_SYMBOLS.includes(c.symbol.toLowerCase())).map(c => ({
-      sym: c.symbol.toUpperCase(),
-      name: c.name,
-      mcap: c.market_capitalization,
-      price: c.price_now,
-      color: COIN_COLORS[c.symbol.toLowerCase()] || "#71BAFF",
-      img: c.coin_image_url,
-      id: c.id,
-      key: c.key
-    }));
-
-    // Try to get prices from CoinGecko for consistency
-    try {
-      const ids = Object.values(COINGECKO_IDS);
-      const cgRes = await fetch(
-        `${CG_API}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`,
-        { headers: CG_HEADERS }
-      );
-      if (cgRes.ok) {
-        const cgData = await cgRes.json();
-        coins.forEach(c => {
-          const cgId = COINGECKO_IDS[c.sym.toLowerCase()];
-          const cgCoin = cgData.find(x => x.id === cgId);
-          if (cgCoin) {
-            c.mcap = cgCoin.market_cap;
-            c.price = cgCoin.current_price;
-          }
-        });
-      }
-    } catch (cgErr) {
-      console.warn("CoinGecko fetch failed, using meme.com prices:", cgErr);
-    }
-
-    return coins;
-  } catch (err) {
-    console.error("Failed to fetch coins, using fallback:", err);
-    return FALLBACK_COINS;
-  }
-}
-
-async function fetchPrices(coins) {
-  try {
-    // Use CoinGecko for faster updates
-    const ids = coins.map(c => COINGECKO_IDS[c.sym.toLowerCase()]).filter(Boolean);
-    if (ids.length === 0) return {};
-
-    const res = await fetch(
-      `${CG_API}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`,
-      { headers: CG_HEADERS }
-    );
-    if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-    const data = await res.json();
-    if (!Array.isArray(data)) throw new Error("CoinGecko returned non-array");
-
-    const priceMap = {};
-    data.forEach(coin => {
-      // Find our symbol from CoinGecko ID
-      const sym = Object.entries(COINGECKO_IDS).find(([k, v]) => v === coin.id)?.[0];
-      if (sym) {
-        priceMap[sym] = {
-          price: coin.current_price,
-          mcap: coin.market_cap
-        };
-      }
-    });
-    return priceMap;
-  } catch (err) {
-    console.error("CoinGecko free failed, trying CG Pro:", err);
-    // Fallback to CoinGecko Pro
-    try {
-      const ids = coins.map(c => COINGECKO_IDS[c.sym.toLowerCase()]).filter(Boolean);
-      if (ids.length === 0) return {};
-      const res = await fetch(
-        `${CG_PRO_API}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc`,
-        { headers: CG_PRO_HEADERS }
-      );
-      if (!res.ok) throw new Error(`CG Pro ${res.status}`);
-      const data = await res.json();
-      const priceMap = {};
-      data.forEach(coin => {
-        const sym = Object.entries(COINGECKO_IDS).find(([k, v]) => v === coin.id)?.[0];
-        if (sym) {
-          priceMap[sym] = { price: coin.current_price, mcap: coin.market_cap };
-        }
-      });
-      return priceMap;
-    } catch (e) {
-      console.error("CG Pro fallback also failed:", e);
-      return {};
-    }
-  }
-}
-
 // LMSR (Logarithmic Market Scoring Rule) - proper implementation
 // Cost function: C(qY, qN) = B * ln(exp(qY/B) + exp(qN/B))
 const costFn = (qY, qN, B) => {
@@ -965,7 +938,7 @@ const sellShares = (qY, qN, B, shares, side) => {
 };
 
 const fM = v => v>=1e12?"$"+(v/1e12).toFixed(2)+"T":v>=1e9?"$"+(v/1e9).toFixed(2)+"B":v>=1e6?"$"+(v/1e6).toFixed(2)+"M":"$"+(v/1e3).toFixed(0)+"K";
-const fT = s => s<=0?"RESOLVING...":String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor((s%3600)/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+const fT = s => {if(s<=0)return"RESOLVING...";const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),mn=Math.floor((s%3600)/60),sc=s%60;if(d>0)return d+"d "+h+"h";return String(h).padStart(2,"0")+":"+String(mn).padStart(2,"0")+":"+String(sc).padStart(2,"0");};
 const gld = { background:"linear-gradient(193deg,#f7931a -49%,#fab248 -14%,#fff1a6 58%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" };
 
 // Next round expiry: 13:59:59 UTC daily (1s before 14:00 so pg_cron catches it)
@@ -1010,6 +983,14 @@ const mkBattle = (coinA, coinB, r) => {
     st: "OPEN", res: null,
     ea: nextBattleExpiry(), vol: 0, ppl: 0
   };
+};
+
+const NUM_UPDOWN_MARKETS = 4;
+
+const pickUpdownCoin = (excludeSyms) => {
+  const eligible = Object.keys(BATTLE_COINS).filter(sym => battleCoinMap[sym] && !excludeSyms.has(sym));
+  if (eligible.length === 0) return null;
+  return eligible[Math.floor(Math.random() * eligible.length)];
 };
 
 const pickBattleMatchup = (coinMap) => {
@@ -1296,7 +1277,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
   const grossRf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const sellFee = pos && m.st === "OPEN" ? Math.round(grossRf * 0.02) : 0;
   const rf = grossRf - sellFee;
-  const pnl = pos ? rf - pos.inv : 0;
+  const pnl = pos ? grossRf - pos.inv : 0;
 
   const doBuy = () => {
     const a = parseInt(amt)||0;
@@ -1363,7 +1344,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                   fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em"
                 }}>
                   <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
-                    {rf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
+                    {grossRf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
                   </span>
                   <span style={{
                     fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
@@ -1445,13 +1426,15 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
         <div style={{ minHeight:48 }}>
           {step==="sel" && m.st==="OPEN" && (
             <div style={{ display:"flex", gap:10 }}>
-              <button style={{ ...bx, background:"#71baff8a" }}
+              <button style={{ ...bx, background:"#71baff8a", opacity: yp < 1 ? 0.3 : 1 }}
+                disabled={yp < 1}
                 onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}>
-                UP
+                UP {yp < 1 ? "(locked)" : ""}
               </button>
-              <button style={{ ...bx, background:"#234bc29e", border:"2px solid #c8dbff52" }}
+              <button style={{ ...bx, background:"#234bc29e", border:"2px solid #c8dbff52", opacity: np < 1 ? 0.3 : 1 }}
+                disabled={np < 1}
                 onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}>
-                DOWN
+                DOWN {np < 1 ? "(locked)" : ""}
               </button>
             </div>
           )}
@@ -1465,7 +1448,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                 <span style={gld}>BAL: {bal.toLocaleString()}</span>
               </div>
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
-                value={amt} onChange={e => setAmt(e.target.value)} autoFocus
+                value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
                 style={{
                   height:42, border:"1px solid #4c5159", borderRadius:15,
                   textAlign:"center", color:"#fff", background:"transparent",
@@ -1495,15 +1478,13 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                 if (sh <= 0) return (
                   <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff60", textAlign:"center", marginBottom:2 }}>{feeStr}</div>
                 );
-                const loserInv = side === "YES" ? m.nInv : m.yInv;
-                if (loserInv <= 0) return (
-                  <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff60", textAlign:"center", marginBottom:2 }}>
-                    {feeStr} / ~1.0x if {side==="YES"?"UP":"DOWN"} wins
-                  </div>
-                );
-                const winnerSh = (side === "YES" ? m.qY - m.b + sh : m.qN - m.b + sh);
-                const payout = Math.min(net + Math.round(sh / winnerSh * loserInv), net * 10);
-                const mult = Math.min(payout / net, 10).toFixed(1);
+                // POOL-SPLIT-V1: const loserInv = side === "YES" ? m.nInv : m.yInv;
+                // POOL-SPLIT-V1: const winnerSh = (side === "YES" ? m.qY - m.b + sh : m.qN - m.b + sh);
+                // POOL-SPLIT-V1: const poolPayout = loserInv > 0 ? net + Math.round(sh / winnerSh * loserInv) : net;
+                // POOL-SPLIT-V1: const payout = Math.max(poolPayout, sh);
+                const payout = sh;  // Pure LMSR: 1 per winning share
+                const multRaw = payout / net;
+                const mult = multRaw < 2 ? multRaw.toFixed(2) : multRaw.toFixed(1);
                 return (
                   <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff60", textAlign:"center", marginBottom:2 }}>
                     {feeStr} / ~{mult}x if {side==="YES"?"UP":"DOWN"} wins
@@ -1540,9 +1521,9 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
 
           {step==="res" && (() => {
             const won = pos && m.res === pos.side;
-            const baseReward = won && m.wws > 0
-              ? Math.min(pos.inv + Math.round(pos.sh / m.wws * (m.pot - m.wis)), pos.inv * 10)
-              : 0;
+            // POOL-SPLIT-V1: const poolReward = won && m.wws > 0 ? pos.inv + Math.round(pos.sh / m.wws * (m.pot - m.wis)) : 0;
+            // POOL-SPLIT-V1: const baseReward = won ? Math.max(poolReward, pos.sh) : 0;
+            const baseReward = won ? Math.round(pos.sh) : 0;
             return (
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               {pos && !pos.claimed && (
@@ -1598,7 +1579,62 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
   );
 };
 
-const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, memeUser, onLoginRequired }) => {
+const TrendDualChart = ({ snapshots, m, aLeads, bLeads, colorOverride }) => {
+  const startA = Number(m.startMc) || 0;
+  const startB = Number(m.startMcB) || 0;
+
+  // Use latest snapshot as current value so chart endpoint matches the numbers
+  const last = snapshots && snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+  const curA = last ? (Number(last.score_a) || Number(m.mc) || 0) : (Number(m.mc) || 0);
+  const curB = last ? (Number(last.score_b) || Number(m.mcB) || 0) : (Number(m.mcB) || 0);
+
+  // Build parallel point arrays as % change from start
+  const buildPoints = (startVal, curVal, scoreKey) => {
+    const base = startVal || 1;
+    const pts = [{ score: 0, t: 0 }];
+    if (snapshots && snapshots.length > 0) {
+      const t0 = new Date(snapshots[0].recorded_at).getTime();
+      const span = Date.now() - t0 || 1;
+      snapshots.forEach(s => {
+        const raw = Number(s[scoreKey]) || 0;
+        pts.push({ score: ((raw - base) / base) * 100, t: (new Date(s.recorded_at).getTime() - t0) / span });
+      });
+    }
+    pts.push({ score: ((curVal - base) / base) * 100, t: 1 });
+    return pts;
+  };
+  const ptsA = buildPoints(startA, curA, 'score_a');
+  const ptsB = buildPoints(startB, curB, 'score_b');
+
+  const W = 200, H = 56, PAD = 4;
+  const allScores = [...ptsA.map(p => p.score), ...ptsB.map(p => p.score)];
+  const min = Math.min(...allScores, 0) - 2, max = Math.max(...allScores, 0) + 2;
+  const range = max - min || 1;
+
+  const toPath = (pts) => pts.map((p, i) => {
+    const x = PAD + p.t * (W - PAD * 2);
+    const y = PAD + (1 - (p.score - min) / range) * (H - PAD * 2);
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+
+  const endY = (pts) => {
+    const last = pts[pts.length - 1];
+    return PAD + (1 - (last.score - min) / range) * (H - PAD * 2);
+  };
+
+  const colorA = colorOverride?.a || "#64B5F6", colorB = colorOverride?.b || "#a78bfa";
+
+  return React.createElement('div', { style: { marginBottom: 10, maxWidth: '60%', marginLeft: 'auto', marginRight: 'auto' } },
+    React.createElement('svg', { width: '100%', viewBox: '0 0 ' + W + ' ' + H, style: { overflow: 'visible', display: 'block' } },
+      React.createElement('path', { d: toPath(ptsA), fill: 'none', stroke: colorA, strokeWidth: aLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+      React.createElement('path', { d: toPath(ptsB), fill: 'none', stroke: colorB, strokeWidth: bLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+      React.createElement('circle', { cx: W - PAD, cy: endY(ptsA), r: 2.5, fill: colorA }),
+      React.createElement('circle', { cx: W - PAD, cy: endY(ptsB), r: 2.5, fill: colorB })
+    )
+  );
+};
+
+const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, memeUser, onLoginRequired, trendSnaps = {} }) => {
   const [step, setStep] = useState("sel");
   const [side, setSide] = useState(null);
   const [amt, setAmt] = useState("");
@@ -1619,12 +1655,12 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
 
   const yp = yP(m.qY, m.qN, m.b);
   const np = 100 - yp;
-  const pctA = m.startMc > 0 ? ((m.mc - m.startMc) / m.startMc * 100) : 0;
-  const pctB = m.startMcB > 0 ? ((m.mcB - m.startMcB) / m.startMcB * 100) : 0;
+  const pctA = m.type === "TRENDS" ? (m.mc - m.startMc) : (m.startMc > 0 ? ((m.mc - m.startMc) / m.startMc * 100) : 0);
+  const pctB = m.type === "TRENDS" ? (m.mcB - m.startMcB) : (m.startMcB > 0 ? ((m.mcB - m.startMcB) / m.startMcB * 100) : 0);
   const grossRf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const sellFee = pos && m.st === "OPEN" ? Math.round(grossRf * 0.02) : 0;
   const rf = grossRf - sellFee;
-  const pnl = pos ? rf - pos.inv : 0;
+  const pnl = pos ? grossRf - pos.inv : 0;
   const colorA = m.c.color || "#71BAFF";
   const colorB = m.cB?.color || "#a78bfa";
 
@@ -1643,7 +1679,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
     border: "none", color: "#fff"
   };
 
-  const sideLabel = (s) => s === "YES" ? "$" + m.c.sym : "$" + (m.cB?.sym || "?");
+  const sideLabel = (s) => s === "YES" ? (m.type === "TRENDS" ? m.c.sym : "$" + m.c.sym) : (m.type === "TRENDS" ? (m.cB?.sym || "?") : "$" + (m.cB?.sym || "?"));
 
   return (
     <div style={{
@@ -1669,9 +1705,13 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
               textTransform: "uppercase", lineHeight: 1.2,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8
             }}>
-              <a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration: "none", textShadow: "none" }}>${m.c.sym}</a>
+              {m.type === "TRENDS"
+                ? <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.sym)}&date=now+7-d`} target="_blank" rel="noopener noreferrer" style={{ color: "#64B5F6", textDecoration: "none" }}>{m.c.sym}</a>
+                : <a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorA, textDecoration: "none" }}>${m.c.sym}</a>}
               <span style={{ fontSize: ".85em", color: "#ffffff" }}>VS</span>
-              <a href={`https://meme.com/coin/${MEME_SLUGS[m.cB?.sym] || (m.cB?.sym || "").toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration: "none", textShadow: "none" }}>${m.cB?.sym}</a>
+              {m.type === "TRENDS"
+                ? <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermB || m.cB?.sym)}&date=now+7-d`} target="_blank" rel="noopener noreferrer" style={{ color: "#a78bfa", textDecoration: "none" }}>{m.cB?.sym}</a>
+                : <a href={`https://meme.com/coin/${MEME_SLUGS[m.cB?.sym] || (m.cB?.sym || "").toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorB, textDecoration: "none" }}>${m.cB?.sym}</a>}
             </div>
             <div style={{
               display: "inline-block", padding: "1px 8px", borderRadius: 6, marginTop: 4,
@@ -1692,16 +1732,28 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
 
         {/* Price section: side-by-side % change with leader indicator */}
         {(() => {
-          const aLeads = pctA > pctB;
-          const bLeads = pctB > pctA;
-          const tied = pctA === pctB;
+          // For TRENDS, use latest snapshot so numbers match the chart endpoint
+          let curA = m.mc, curB = m.mcB;
+          if (m.type === "TRENDS") {
+            const snaps = trendSnaps[m.id];
+            if (snaps && snaps.length > 0) {
+              const last = snaps[snaps.length - 1];
+              curA = Number(last.score_a) || m.mc;
+              curB = Number(last.score_b) || m.mcB;
+            }
+          }
+          const tPctA = m.type === "TRENDS" ? (curA - m.startMc) : pctA;
+          const tPctB = m.type === "TRENDS" ? (curB - m.startMcB) : pctB;
+          const aLeads = tPctA > tPctB;
+          const bLeads = tPctB > tPctA;
+          const tied = tPctA === tPctB;
           const isLosingA = bLeads;
           const isLosingB = aLeads;
           const pctStyle = (pct, leads, gold, losing) => ({
             fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", fontWeight: 900, letterSpacing: 1,
             background: leads
               ? (gold ? "linear-gradient(135deg, #FFD54F, #FF9800, #FFE082)" : "linear-gradient(135deg, #82B1FF, #448AFF, #B388FF)")
-              : losing ? (pct >= 0 ? "linear-gradient(135deg, #ccc, #fff, #ccc)" : "linear-gradient(135deg, #b71c1c, #d32f2f, #e53935)")
+              : losing ? (pct >= 0 ? "linear-gradient(135deg, #777, #999, #777)" : "linear-gradient(135deg, #b71c1c, #d32f2f, #e53935)")
               : (pct >= 0 ? "linear-gradient(135deg, #4ade80, #22c55e)" : "linear-gradient(135deg, #f65e5e, #ef4444)"),
             WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
             filter: leads ? `drop-shadow(0 0 8px ${gold ? "#FF980066" : "#448AFF66"})` : "none",
@@ -1709,25 +1761,44 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
           });
           const hasBet = pos && !pos.claimed && m.st === "OPEN";
           return (
-          <div style={{
-            display: "flex", alignItems: "center", marginBottom: 14, justifyContent: "space-between"
-          }}>
+          <div style={{ marginBottom: 14 }}>
+            {(m.type === "TRENDS" || m.type === "BATTLE") && React.createElement(TrendDualChart, {
+              snapshots: trendSnaps[m.id] || [],
+              m: m, aLeads: aLeads, bLeads: bLeads,
+              colorOverride: m.type === "BATTLE" ? { a: colorA, b: colorB } : undefined
+            })}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between"
+            }}>
             <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start",
               padding: "4px 10px", borderRadius: 8,
-              background: aLeads ? "#FFD54F0a" : bLeads ? "#f65e5e0a" : "transparent",
-              border: aLeads ? "1px solid #FFD54F25" : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
+              background: aLeads ? ((m.type === "TRENDS" ? colorA : "#FFD54F") + "0a") : bLeads ? "#f65e5e0a" : "transparent",
+              border: aLeads ? ("1px solid " + (m.type === "TRENDS" ? colorA : "#FFD54F") + "25") : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
             }}>
               <div style={{
                 fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", marginBottom: 1,
-                color: aLeads ? "#FFD54F" : bLeads ? "#f65e5e" : "#ffffff30"
+                color: aLeads ? (m.type === "TRENDS" ? colorA : "#FFD54F") : bLeads ? "#f65e5e" : "#ffffff30"
               }}>{aLeads ? "WINNING" : bLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
-              <span style={pctStyle(pctA, aLeads, true, isLosingA)}>
-                {pctA >= 0 ? "+" : ""}{pctA.toFixed(1)}%
-              </span>
-              <div style={{
-                fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: "#ffffff58", marginTop: 2
-              }}>{fM(m.startMc)} → {fM(m.mc)}</div>
+              {m.type === "TRENDS" ? (() => {
+                const chg = m.startMc > 0 ? ((curA - m.startMc) / m.startMc * 100) : 0;
+                const chgColor = aLeads ? "#4ade80" : chg >= 0 ? "#999" : "#f65e5e";
+                return <>
+                  <span style={{
+                    fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", color: chgColor
+                  }}>{chg >= 0 ? "+" : ""}{chg.toFixed(0)}%</span>
+                  <div style={{
+                    fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: aLeads ? colorA : "#ffffff60", marginTop: 2
+                  }}>{Math.round(m.startMc)} <span style={{ color: "#ffffff40" }}>→</span> {Math.round(curA)} <span style={{ color: "#ffffff40" }}>INTEREST</span></div>
+                </>;
+              })() : <>
+                <span style={pctStyle(pctA, aLeads, true, isLosingA)}>
+                  {pctA >= 0 ? "+" : ""}{pctA.toFixed(1)}%
+                </span>
+                <div style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: "#ffffff58", marginTop: 2
+                }}>{fM(m.startMc)} → {fM(m.mc)}</div>
+              </>}
             </div>
             {hasBet && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, marginTop: -6 }}>
@@ -1740,7 +1811,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                     fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em",
                     color: pos.side === "YES" ? colorA : colorB
                   }}>
-                    {rf.toLocaleString()} {pos.side === "YES" ? m.c.sym : (m.cB?.sym || "?")}
+                    {grossRf.toLocaleString()} {pos.side === "YES" ? m.c.sym : (m.cB?.sym || "?")}
                   </span>
                   <span style={{
                     fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
@@ -1753,21 +1824,35 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
             )}
             <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end",
               padding: "4px 10px", borderRadius: 8,
-              background: bLeads ? "#82B1FF0a" : aLeads ? "#f65e5e0a" : "transparent",
-              border: bLeads ? "1px solid #82B1FF25" : aLeads ? "1px solid #f65e5e20" : "1px solid transparent",
+              background: bLeads ? (colorB + "0a") : aLeads ? "#f65e5e0a" : "transparent",
+              border: bLeads ? ("1px solid " + colorB + "25") : aLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
             }}>
               <div style={{
                 fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", marginBottom: 1,
-                color: bLeads ? "#82B1FF" : aLeads ? "#f65e5e" : "#ffffff30"
+                color: bLeads ? colorB : aLeads ? "#f65e5e" : "#ffffff30"
               }}>{bLeads ? "WINNING" : aLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
-              <span style={pctStyle(pctB, bLeads, false, isLosingB)}>
-                {pctB >= 0 ? "+" : ""}{pctB.toFixed(1)}%
-              </span>
-              <div style={{
-                fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: "#ffffff58", marginTop: 2
-              }}>{fM(m.startMcB)} → {fM(m.mcB)}</div>
+              {m.type === "TRENDS" ? (() => {
+                const chg = m.startMcB > 0 ? ((curB - m.startMcB) / m.startMcB * 100) : 0;
+                const chgColor = bLeads ? "#4ade80" : chg >= 0 ? "#999" : "#f65e5e";
+                return <>
+                  <span style={{
+                    fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", color: chgColor
+                  }}>{chg >= 0 ? "+" : ""}{chg.toFixed(0)}%</span>
+                  <div style={{
+                    fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: bLeads ? colorB : "#ffffff60", marginTop: 2
+                  }}>{Math.round(m.startMcB)} <span style={{ color: "#ffffff40" }}>→</span> {Math.round(curB)} <span style={{ color: "#ffffff40" }}>INTEREST</span></div>
+                </>;
+              })() : <>
+                <span style={pctStyle(pctB, bLeads, false, isLosingB)}>
+                  {pctB >= 0 ? "+" : ""}{pctB.toFixed(1)}%
+                </span>
+                <div style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: "#ffffff58", marginTop: 2
+                }}>{fM(m.startMcB)} → {fM(m.mcB)}</div>
+              </>}
             </div>
+          </div>
           </div>
           );
         })()}
@@ -1804,13 +1889,15 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
         <div style={{ minHeight: 48 }}>
           {step === "sel" && m.st === "OPEN" && (
             <div style={{ display: "flex", gap: 10 }}>
-              <button style={{ ...bx, background: colorA + "8a" }}
+              <button style={{ ...bx, background: colorA + "8a", opacity: yp < 1 ? 0.3 : 1 }}
+                disabled={yp < 1}
                 onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}>
-                ${m.c.sym}
+                {m.type === "TRENDS" ? m.c.sym : `$${m.c.sym}`} {yp < 1 ? "(locked)" : ""}
               </button>
-              <button style={{ ...bx, background: colorB + "8a" }}
+              <button style={{ ...bx, background: colorB + "8a", opacity: np < 1 ? 0.3 : 1 }}
+                disabled={np < 1}
                 onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}>
-                ${m.cB?.sym}
+                {m.type === "TRENDS" ? (m.cB?.sym || "?") : `$${m.cB?.sym}`} {np < 1 ? "(locked)" : ""}
               </button>
             </div>
           )}
@@ -1824,7 +1911,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                 <span style={gld}>BAL: {bal.toLocaleString()}</span>
               </div>
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
-                value={amt} onChange={e => setAmt(e.target.value)} autoFocus
+                value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
                 style={{
                   height: 42, border: "1px solid #4c5159", borderRadius: 15,
                   textAlign: "center", color: "#fff", background: "transparent",
@@ -1854,15 +1941,13 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                 if (sh <= 0) return (
                   <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", textAlign: "center", marginBottom: 2 }}>{feeStr}</div>
                 );
-                const loserInv = side === "YES" ? m.nInv : m.yInv;
-                if (loserInv <= 0) return (
-                  <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", textAlign: "center", marginBottom: 2 }}>
-                    {feeStr} / ~1.0x if {sideLabel(side)} wins
-                  </div>
-                );
-                const winnerSh = (side === "YES" ? m.qY - m.b + sh : m.qN - m.b + sh);
-                const payout = Math.min(net + Math.round(sh / winnerSh * loserInv), net * 10);
-                const mult = Math.min(payout / net, 10).toFixed(1);
+                // POOL-SPLIT-V1: const loserInv = side === "YES" ? m.nInv : m.yInv;
+                // POOL-SPLIT-V1: const winnerSh = (side === "YES" ? m.qY - m.b + sh : m.qN - m.b + sh);
+                // POOL-SPLIT-V1: const poolPayout = loserInv > 0 ? net + Math.round(sh / winnerSh * loserInv) : net;
+                // POOL-SPLIT-V1: const payout = Math.max(poolPayout, sh);
+                const payout = sh;  // Pure LMSR: 1 per winning share
+                const multRaw = payout / net;
+                const mult = multRaw < 2 ? multRaw.toFixed(2) : multRaw.toFixed(1);
                 return (
                   <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", textAlign: "center", marginBottom: 2 }}>
                     {feeStr} / ~{mult}x if {sideLabel(side)} wins
@@ -1893,9 +1978,9 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
 
           {step === "res" && (() => {
             const won = pos && m.res === pos.side;
-            const baseReward = won && m.wws > 0
-              ? Math.min(pos.inv + Math.round(pos.sh / m.wws * (m.pot - m.wis)), pos.inv * 10)
-              : 0;
+            // POOL-SPLIT-V1: const poolReward = won && m.wws > 0 ? pos.inv + Math.round(pos.sh / m.wws * (m.pot - m.wis)) : 0;
+            // POOL-SPLIT-V1: const baseReward = won ? Math.max(poolReward, pos.sh) : 0;
+            const baseReward = won ? Math.round(pos.sh) : 0;
             const winnerSym = m.res === "YES" ? m.c.sym : m.cB?.sym;
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -1903,7 +1988,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                   fontFamily: "'Londrina Solid',sans-serif", fontSize: ".9em",
                   textAlign: "center", marginBottom: 4,
                   color: m.res === "YES" ? colorA : colorB
-                }}>${winnerSym} WON!</div>
+                }}>{m.type === "TRENDS" ? winnerSym : "$" + winnerSym} WON!</div>
                 {pos && !pos.claimed && (
                   <button style={{ ...bx, background: won ? "#71baff" : "#f65e5e30" }}
                     onClick={() => onClaim(m.id)}>
@@ -1946,14 +2031,385 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
             </div>
           )}
           <span style={{
-            fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em",
+            fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em",
             background: "linear-gradient(90deg, " + colorA + "40, " + colorB + "40)",
-            padding: "2px 6px", borderRadius: 4, color: "#ffffffcc"
-          }}>48H BATTLE</span>
+            padding: "3px 8px", borderRadius: 4, color: "#ffffffcc"
+          }}>{m.type === "TRENDS" ? "7D GOOGLE TRENDS" : "48H COIN BATTLE"}</span>
         </div>
         {marketPool(m.qY, m.qN, m.b) > 0 && <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
           <span style={{ color: "#ffffff30", marginRight: 4 }}></span>
           <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
+        </span>}
+      </div>
+    </div>
+  );
+};
+
+const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, setMemescore, setPmMarkets, isMobile }) => {
+  const [step, setStep] = useState("sel");
+  const [side, setSide] = useState(null);
+  const [amt, setAmt] = useState("");
+  const [sec, setSec] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [soldInfo, setSoldInfo] = useState(null);
+
+  const pmExpiry = pm.expires_at || pm.ending_date;
+  useEffect(() => {
+    if (!pmExpiry) return;
+    const t = () => setSec(Math.max(0, Math.floor((new Date(pmExpiry).getTime() - Date.now()) / 1000)));
+    t();
+    const i = setInterval(t, 1000);
+    return () => clearInterval(i);
+  }, [pmExpiry]);
+
+  // Predictions v1 timer: HH:MM:SS for <24h, "DD MMM" for >=24h
+  const pmTimer = (s) => {
+    if (s <= 0) return "RESOLVING...";
+    if (s < 86400) {
+      const h = Math.floor(s / 3600), mn = Math.floor((s % 3600) / 60), sc = s % 60;
+      return String(h).padStart(2, "0") + ":" + String(mn).padStart(2, "0") + ":" + String(sc).padStart(2, "0");
+    }
+    const target = new Date(Date.now() + s * 1000);
+    return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(target);
+  };
+
+  const up = pm.user_position;
+  const posSide = up && (up.yes_shares_amount || 0) > 0 ? "YES" : up && (up.no_shares_amount || 0) > 0 ? "NO" : null;
+  const posShares = posSide === "YES" ? (up?.yes_shares_amount || 0) : (up?.no_shares_amount || 0);
+  const posInvested = posSide === "YES" ? (up?.invested_yes_memescore || 0) : (up?.invested_no_memescore || 0);
+  const hasPos = posSide !== null && posShares > 0;
+  const isResolved = pm.status === "RESOLVED";
+
+  useEffect(() => {
+    if (isResolved && hasPos && !up?.claimed) setStep("res");
+    else if (isResolved) setStep("res");
+    else if (!isResolved && hasPos) setStep("pos");
+    else setStep("sel");
+  }, [pm.status, posSide, up?.claimed]);
+
+  const qY = (pm.total_yes_shares || 0) + (pm.liquidity || 0);
+  const qN = (pm.total_no_shares || 0) + (pm.liquidity || 0);
+  const B = pm.liquidity || 1;
+  const yp = yP(qY, qN, B);
+  const np = 100 - yp;
+
+  const posValue = hasPos ? sellShares(qY, qN, B, posShares, posSide) : 0;
+  const posPnl = posValue - posInvested;
+
+  const maxPct = pm.max_memescore_invested_percentage;
+  const maxBet = maxPct ? Math.min(Math.floor(memescore * maxPct / 100), memescore) : memescore;
+
+  const labelYes = pm.label_yes || "YES";
+  const labelNo = pm.label_no || "NO";
+
+  const doBuy = async () => {
+    const a = parseInt(amt) || 0;
+    if (a <= 0 || a > maxBet) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await pmBuy(authToken, pm.market_id, a, side);
+      if (result.memescore_update) setMemescore(result.memescore_update.current_memescore);
+      setPmMarkets(prev => prev.map(m => m.market_id === pm.market_id ? { ...m, user_position: result.user_position } : m));
+      setAmt("");
+      setStep("pos");
+    } catch (e) {
+      setError(e.message || "Buy failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doSell = async () => {
+    if (!hasPos) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const expectedRefund = sellShares(qY, qN, B, posShares, posSide);
+      const result = await pmSell(authToken, pm.market_id, posSide, expectedRefund);
+      if (result.current_memescore != null) setMemescore(result.current_memescore);
+      setSoldInfo({ amount: expectedRefund, pnl: expectedRefund - posInvested });
+      setPmMarkets(prev => prev.map(m => m.market_id === pm.market_id ? { ...m, user_position: null } : m));
+      setTimeout(() => setSoldInfo(null), 3000);
+    } catch (e) {
+      setError(e.message || "Sell failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doClaim = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await pmClaim(authToken, pm.market_id);
+      if (result.current_memescore != null) setMemescore(result.current_memescore);
+      setPmMarkets(prev => prev.map(m => m.market_id === pm.market_id ? { ...m, user_position: { ...m.user_position, claimed: true } } : m));
+    } catch (e) {
+      setError(e.message || "Claim failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const bx = {
+    height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+    width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
+    textTransform: "uppercase", borderRadius: 15, cursor: loading ? "wait" : "pointer",
+    border: "none", color: "#fff"
+  };
+
+  const pool = marketPool(qY, qN, B);
+  const traders = pm.users_trading_count || pm.total_traders || 0;
+
+  return (
+    <div style={{
+      background: "linear-gradient(360deg,#212936,#4e596c)",
+      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px"
+    }}>
+      <div style={{
+        background: "#191f29", borderRadius: 14, padding: "14px 18px",
+        minHeight: 192, display: "flex", flexDirection: "column",
+        justifyContent: "space-between"
+      }}>
+        {/* Header: image + title + timer */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12, gap: 11, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11, flex: 1, minWidth: 0 }}>
+            {pm.image_url ? (
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0, overflow: "hidden",
+                background: "linear-gradient(135deg, #71BAFF15, #4023C308)"
+              }}>
+                <img src={pm.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={e => { e.target.style.display = "none"; }} />
+              </div>
+            ) : (
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                background: "linear-gradient(135deg, #71BAFF25, #4023C318)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 18
+              }}>?</div>
+            )}
+            <div style={{
+              fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em",
+              lineHeight: 1.2, minWidth: 0,
+              textShadow: "0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)"
+            }}>{pm.title}</div>
+          </div>
+          {!isResolved && (
+            <div style={{
+              padding: "2px 8px", borderRadius: 8, flexShrink: 0,
+              background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
+              border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
+              animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
+            }}>
+              <span style={{
+                fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em",
+                letterSpacing: "1px", ...gld
+              }}>{pmTimer(sec)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Position display */}
+        {hasPos && !up?.claimed && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+            <div style={{ whiteSpace: "nowrap" }}>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>YOUR BET</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em" }}>
+                <span style={{ color: posSide === "YES" ? "#71baff" : "#a78bfa" }}>
+                  {posValue.toLocaleString()} {posSide === "YES" ? labelYes : labelNo}
+                </span>
+                <span style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em",
+                  color: posPnl >= 0 ? "#4ade80" : "#f65e5e"
+                }}>
+                  {posPnl >= 0 ? "\u25B2" : "\u25BC"} {posPnl >= 0 ? "+" : ""}{posPnl.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Probability bar */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: ".75em", fontFamily: "'Jersey 25',sans-serif", minWidth: 28, textAlign: "center" }}>{yp}%</span>
+          <div style={{
+            flex: 1, height: 12, borderRadius: 62,
+            border: "1px solid #ffffff4d", overflow: "hidden", position: "relative"
+          }}>
+            <div style={{
+              position: "absolute", top: 2, bottom: 2, left: 2,
+              width: "calc(" + yp + "% - 2px)",
+              background: "linear-gradient(270deg,#FFFAC0 4%,#AED8FF 25%,#71BAFF 62%)",
+              borderRadius: "62px 0 0 62px"
+            }} />
+            <div style={{
+              position: "absolute", top: 2, bottom: 2, right: 2, left: yp + "%",
+              background: "linear-gradient(90deg,#8398FF 25%,#4023C3 62%)",
+              borderRadius: "0 62px 62px 0"
+            }} />
+          </div>
+          <span style={{ fontSize: ".75em", fontFamily: "'Jersey 25',sans-serif", minWidth: 28, textAlign: "center" }}>{np}%</span>
+        </div>
+
+        {/* Error display */}
+        {error && (
+          <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#f65e5e", textAlign: "center", marginBottom: 8 }}>{error}</div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ minHeight: 48 }}>
+          {soldInfo && (
+            <div style={{ textAlign: "center", padding: "8px 0" }}>
+              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em", color: "#4ade80" }}>
+                SOLD!
+              </div>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", color: "#ffffffcc" }}>
+                +{soldInfo.amount.toLocaleString()} credited to your main Memescore balance
+              </div>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: soldInfo.pnl >= 0 ? "#4ade80" : "#f65e5e" }}>
+                {soldInfo.pnl >= 0 ? "+" : ""}{soldInfo.pnl.toLocaleString()} PnL
+              </div>
+            </div>
+          )}
+
+          {!soldInfo && step === "sel" && !isResolved && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={{ ...bx, background: "#71baff8a", opacity: yp < 1 ? 0.3 : 1 }}
+                disabled={yp < 1}
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); setError(null); }}>
+                {labelYes} {yp < 1 ? "(locked)" : ""}
+              </button>
+              <button style={{ ...bx, background: "#234bc29e", border: "2px solid #c8dbff52", opacity: np < 1 ? 0.3 : 1 }}
+                disabled={np < 1}
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); setError(null); }}>
+                {labelNo} {np < 1 ? "(locked)" : ""}
+              </button>
+            </div>
+          )}
+
+          {step === "amt" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{
+                display: "flex", justifyContent: "flex-end", alignItems: "center",
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em"
+              }}>
+                <span style={gld}>MEMESCORE: {maxBet.toLocaleString()}</span>
+              </div>
+              <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
+                value={amt} onChange={e => { setAmt(e.target.value); setError(null); }} onFocus={e => e.target.select()} autoFocus
+                style={{
+                  height: 42, border: "1px solid #4c5159", borderRadius: 15,
+                  textAlign: "center", color: "#fff", background: "transparent",
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none",
+                  width: "100%"
+                }} />
+              <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                {[10, 25, 50, 100].map(p =>
+                  <button key={p}
+                    onClick={() => setAmt(String(Math.floor(maxBet * p / 100)))}
+                    style={{
+                      flex: 1, padding: "4px 0", borderRadius: 8,
+                      fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
+                      background: "#00000042", border: "1px solid #ffffff15",
+                      color: "#ffffff80", cursor: "pointer"
+                    }}>{p}%</button>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button style={{ ...bx, background: "#00000042", flex: "0 0 40px" }}
+                  onClick={() => { setStep(hasPos ? "pos" : "sel"); setSide(null); setAmt(""); setError(null); }}>
+                  X
+                </button>
+                <button
+                  style={{ ...bx, flex: "1 1 auto", background: side === "YES" ? "#71baff8a" : "#234bc29e" }}
+                  onClick={doBuy}
+                  disabled={loading || !amt || parseInt(amt) <= 0 || parseInt(amt) > maxBet}>
+                  {loading ? "..." : `BET ${side === "YES" ? labelYes : labelNo} ${amt ? "(" + parseInt(amt).toLocaleString() + ")" : ""}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "pos" && hasPos && !isResolved && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={{ ...bx, background: "#71baff" }}
+                onClick={() => { setSide(posSide); setStep("amt"); setError(null); }}>
+                ADD MORE {posSide === "YES" ? labelYes : labelNo}
+              </button>
+              <button style={{ ...bx, background: "#71baff8a" }}
+                onClick={doSell} disabled={loading}>
+                {loading ? "..." : "SELL"}
+              </button>
+            </div>
+          )}
+
+          {step === "res" && (() => {
+            const won = hasPos && posSide === pm.resolved_option;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {isResolved && pm.resolved_option && (
+                  <div style={{
+                    fontFamily: "'Londrina Solid',sans-serif", fontSize: ".9em",
+                    textAlign: "center", marginBottom: 4,
+                    color: pm.resolved_option === "YES" ? "#71baff" : "#a78bfa"
+                  }}>{pm.resolved_option === "YES" ? labelYes : labelNo} WON!</div>
+                )}
+                {hasPos && !up?.claimed && (
+                  <button style={{ ...bx, background: won ? "#71baff" : "#f65e5e30" }}
+                    onClick={won ? doClaim : () => {
+                      setPmMarkets(prev => prev.map(m => m.market_id === pm.market_id ? { ...m, user_position: { ...m.user_position, claimed: true } } : m));
+                    }}
+                    disabled={loading}>
+                    {loading ? "..." : (won ? `CLAIM ${Math.round(posShares).toLocaleString()}` : "YOU LOST. CLOSE.")}
+                  </button>
+                )}
+                {up?.claimed && (
+                  <div style={{ fontFamily: "'Jersey 25',sans-serif", textAlign: "center", padding: 8 }}>CLAIMED</div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Footer: avatars + badge + pool */}
+      <div style={{
+        display: "flex", alignItems: "center", marginTop: 10,
+        padding: "0 16px 0 14px", justifyContent: "space-between"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", fontSize: ".75em", gap: 8 }}>
+          {(pm.most_trading_users || []).length > 0 && pool > 0 && (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              {(pm.most_trading_users || []).slice(0, 3).map((u, i) => (
+                <div key={u.username || i} style={{
+                  width: 24, height: 24, borderRadius: "50%", border: "2px solid #191f29",
+                  marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i,
+                  background: u.profile_image_url ? `url(${u.profile_image_url}) center/cover` : "linear-gradient(135deg,#4e596c,#212936)",
+                  position: "relative"
+                }} />
+              ))}
+              {traders > 3 && (
+                <span style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em",
+                  color: "#ffffff60", marginLeft: 4
+                }}>+{traders - 3}</span>
+              )}
+            </div>
+          )}
+          <span style={{
+            fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em",
+            background: "linear-gradient(90deg, #71BAFF40, #4023C340)",
+            padding: "3px 8px", borderRadius: 4, color: "#ffffffcc"
+          }}>PREDICTION</span>
+        </div>
+        {pool > 0 && <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
+          <span style={{ color: "#ffffff30", marginRight: 4 }}></span>
+          <span style={gld}>{pool.toLocaleString()}</span>
         </span>}
       </div>
     </div>
@@ -2276,6 +2732,132 @@ const TreasureChestCard = ({ chestState, chestCooldown, chestReward, chestQuest,
   );
 };
 
+const RetweetQuestCard = ({ retweetState, retweetCooldown, retweetReward, retweetQuest, onRetweet, isMobile }) => {
+  const reward = retweetQuest?.reward_meme_score || 500;
+  const isReady = retweetState === "ready";
+  const isRetweeting = retweetState === "retweeting";
+  const isCompleted = retweetState === "completed";
+  const isCooldown = retweetState === "cooldown";
+  const locked = isCooldown || isCompleted;
+
+  const hours = String(Math.floor(retweetCooldown / 3600)).padStart(2, "0");
+  const mins = String(Math.floor((retweetCooldown % 3600) / 60)).padStart(2, "0");
+  const secs = String(retweetCooldown % 60).padStart(2, "0");
+
+  const bx = {
+    height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+    width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
+    textTransform: "uppercase", borderRadius: 15, cursor: "pointer",
+    border: "none", color: "#fff"
+  };
+
+  return (
+    <div style={{
+      background: "linear-gradient(360deg,#212936,#4e596c)",
+      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px",
+      opacity: locked ? 0.6 : 1, transition: "opacity 0.2s"
+    }}>
+      <div style={{
+        background: "url(https://meme.com/assets/images/farm/quest/quest-retweet-v2.webp) center/cover",
+        borderRadius: 14, padding: "14px 18px",
+        minHeight: 192, display: "flex", flexDirection: "column",
+        justifyContent: "space-between", position: "relative", overflow: "hidden"
+      }}>
+        {/* Dark overlay */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: 14,
+          background: "rgba(25,31,41,0.6)", pointerEvents: "none"
+        }}/>
+
+        {/* Content */}
+        <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+          {/* Header */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 11, alignSelf: "flex-start", marginBottom: 8
+          }}>
+            <div style={{
+              fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em",
+              textTransform: "uppercase",
+              textShadow: "0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
+              lineHeight: 1.2
+            }}><span style={{ color: "#71baff" }}>Like &</span> Retweet</div>
+          </div>
+
+          {/* Icon */}
+          <div style={{
+            width: 60, height: 60, margin: "6px 0 12px",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <svg viewBox="0 0 24 24" width="44" height="44" fill="#71baff" style={{ opacity: isReady ? 1 : 0.5 }}>
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          </div>
+
+          {/* Reward or action */}
+          {isCompleted && retweetReward > 0 ? (
+            <div style={{ animation: "rewardPop 0.5s ease-out", marginBottom: 4 }}>
+              <div style={{
+                fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.3em", ...gld
+              }}>+{retweetReward.toLocaleString()}</div>
+              <div style={{
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#ffffff60"
+              }}>MEMESCORE EARNED!</div>
+            </div>
+          ) : (
+            <div style={{ width: "100%" }}>
+              <div style={{
+                fontFamily: "'Londrina Solid',sans-serif", fontSize: ".8em",
+                lineHeight: 1.4, color: "#ffffff90", marginBottom: 10
+              }}>
+                Every journey starts with a simple deed...
+              </div>
+              {isReady && (
+                <button onClick={onRetweet} style={{ ...bx, background: "#71baff8a" }}>LIKE & RT</button>
+              )}
+              {isRetweeting && (
+                <div style={{ ...bx, background: "#ffffff10", cursor: "default" }}>
+                  <div style={{
+                    width: 18, height: 18, border: "2px solid #ffffff30",
+                    borderTopColor: "#71baff", borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite"
+                  }}/>
+                </div>
+              )}
+              {isCooldown && retweetCooldown > 0 && (
+                <div style={{ ...bx, background: "#ffffff10", cursor: "default", color: "#ffffff40" }}>NEXT RT SOON</div>
+              )}
+              {isCompleted && retweetReward === 0 && (
+                <div style={{ ...bx, background: "#ffffff10", cursor: "default", color: "#4ade80" }}>DONE</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display: "flex", alignItems: "center", marginTop: 10,
+        padding: "0 16px 0 14px", justifyContent: "space-between"
+      }}>
+        <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", color: "#ffffff50", display: "flex", alignItems: "center", gap: 6 }}>
+          {isCooldown && retweetCooldown > 0 && (
+            <span style={{ ...gld, letterSpacing: 1, fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em" }}>
+              {hours}:{mins}:{secs}
+            </span>
+          )}
+          {isReady && null}
+          {isRetweeting && <span style={{ color: "#71baff", fontFamily: "'Jersey 25',sans-serif" }}>RETWEETING...</span>}
+          {isCompleted && <span style={{ fontFamily: "'Jersey 25',sans-serif", color: "#f7931a" }}>CLAIMED</span>}
+        </div>
+        <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
+          <span style={gld}>+{reward.toLocaleString()}</span>
+        </span>
+      </div>
+    </div>
+  );
+};
+
 function App() {
   const [mks, setMks] = useState([]);
   const [pos, setPos] = useState({});
@@ -2305,11 +2887,17 @@ function App() {
   const [chestState, setChestState] = useState("cooldown"); // "available" | "cooldown" | "opening" | "reward"
   const [chestReward, setChestReward] = useState(0);
   const [showChestDialog, setShowChestDialog] = useState(false);
+  const [retweetQuest, setRetweetQuest] = useState(null);
+  const [retweetTweet, setRetweetTweet] = useState(null);
+  const [retweetState, setRetweetState] = useState("loading"); // loading | ready | retweeting | completed | cooldown
+  const [retweetReward, setRetweetReward] = useState(0);
+  const [retweetCooldown, setRetweetCooldown] = useState(0);
   const [scanning, setScanning] = useState(false);
   const [lastCensusAt, setLastCensusAt] = useState(null);
   const [scanError, setScanError] = useState(null);
+  const [pmMarkets, setPmMarkets] = useState([]);
 
-  // Refresh leaderboard and market history from database
+  // Refresh leaderboard, market history, and trade history from database
   const refreshLeaderboard = useCallback(async () => {
     const leaders = await loadLeaderboardFromDb();
     if (leaders) setLeaderboard(leaders);
@@ -2317,6 +2905,11 @@ function App() {
     setMarketPlayers(players);
     const history = await loadMarketHistoryFromDb();
     if (history) setMarketHistory(history);
+    // Refresh user's trade history
+    if (userId.current) {
+      const dbHist = await loadTradeHistoryFromDb(userId.current);
+      if (dbHist && dbHist.length > 0) setHist(dbHist.reverse());
+    }
   }, []);
 
   // Load inventory from census data
@@ -2337,6 +2930,8 @@ function App() {
   const initialized = useRef(false);
   const seenResolutions = useRef(new Set());
   const userId = useRef(null);
+  const maxUpdownRound = useRef(0);
+  const trendSnapsRef = useRef({});
   const isMobile = useIsMobile();
 
   // Auth + init on mount (sequential to avoid race condition)
@@ -2360,15 +2955,17 @@ function App() {
           const balances = await fetchLabsBalance(auth.token);
           setMemescore(balances.memescore);
 
-          // Fetch daily treasure chest quest
-          const quest = await fetchChestQuest(auth.token);
-          if (quest) {
-            setChestQuest(quest);
-            if (quest._isAvailable) {
+          // Fetch farming quests (single API call for chest + retweet)
+          const questData = await fetchFarmingQuests(auth.token);
+
+          // --- Treasure Chest ---
+          const chest = extractQuest(questData, "TREASURE_CHEST");
+          if (chest) {
+            setChestQuest(chest);
+            if (chest._isAvailable) {
               setChestState("available");
             } else {
-              // On cooldown — check params for remaining time
-              const cooldownUntil = quest.params?.cooldown_until;
+              const cooldownUntil = chest.params?.cooldown_until;
               if (cooldownUntil) {
                 const remaining = Math.max(0, Math.floor((new Date(cooldownUntil).getTime() - Date.now()) / 1000));
                 setChestCooldown(remaining);
@@ -2377,6 +2974,32 @@ function App() {
                 setChestCooldown(24 * 3600);
                 setChestState("cooldown");
               }
+            }
+          }
+
+          // --- Like & Retweet ---
+          const rt = extractQuest(questData, "RETWEET");
+          if (rt) {
+            setRetweetQuest(rt);
+            if (rt._isCompleted) {
+              setRetweetState("completed");
+            } else if (rt._isAvailable || rt._isInProgress) {
+              const tweet = await fetchQuestTweet(auth.token, user.id);
+              if (tweet && tweet.id != null && tweet.tweet_id_external != null) {
+                setRetweetTweet(tweet);
+                const cdUntil = tweet.cooldown_until;
+                if (cdUntil && new Date(cdUntil).getTime() > Date.now()) {
+                  const rem = Math.max(0, Math.floor((new Date(cdUntil).getTime() - Date.now()) / 1000));
+                  setRetweetCooldown(rem);
+                  setRetweetState("cooldown");
+                } else {
+                  setRetweetState("ready");
+                }
+              } else {
+                setRetweetState("completed");
+              }
+            } else {
+              setRetweetState("completed");
             }
           }
         } else {
@@ -2439,17 +3062,12 @@ function App() {
       const history = await loadMarketHistoryFromDb();
       if (history) setMarketHistory(history);
 
-      const coins = await fetchCoins();
-      if (coins.length === 0) {
+      // Fetch coin metadata from CoinGecko Pro (images, names, prices)
+      await fetchBattleCoinMetadata();
+      if (Object.keys(battleCoinMap).length === 0) {
         setLoading(false);
         return;
       }
-
-      // Fetch battle coin metadata from CoinGecko Pro (correct images/names)
-      await fetchBattleCoinMetadata();
-
-      const coinMap = {};
-      coins.forEach(c => { coinMap[c.sym] = c; });
 
       // Try loading from Supabase first
       const dbPositions = await loadPositionsFromDb(userId.current);
@@ -2467,21 +3085,24 @@ function App() {
           db.status === "OPEN" || (db.status === "RES" && posMarketIds.has(db.id))
         );
         const localMks = relevantMarkets.map(db => {
-          const m = dbMarketToLocal(db, coinMap[db.coin_symbol], battleCoinMap[db.coin_b_symbol]);
+          const m = dbMarketToLocal(db, battleCoinMap[db.coin_symbol], battleCoinMap[db.coin_b_symbol]);
           if (sideInv[db.id]) { m.yInv = sideInv[db.id].YES || 0; m.nInv = sideInv[db.id].NO || 0; }
           return m;
         });
-        // Create UPDOWN markets for any coins missing an OPEN market
+        // Compute max existing UP/DOWN round number from DB
+        const maxRound = dbMarkets.filter(db => (db.market_type || "UPDOWN") === "UPDOWN")
+          .reduce((max, db) => { const rn = parseInt(db.id.split("-")[1]) || 0; return rn > max ? rn : max; }, 0);
+        maxUpdownRound.current = maxRound;
+        // Create random UPDOWN markets until we have NUM_UPDOWN_MARKETS open
         const openSyms = new Set(dbMarkets.filter(db => db.status === "OPEN" && (db.market_type || "UPDOWN") === "UPDOWN").map(db => db.coin_symbol));
-        coins.forEach(c => {
-          if (!openSyms.has(c.sym)) {
-            const highest = dbMarkets.filter(db => db.coin_symbol === c.sym && (db.market_type || "UPDOWN") === "UPDOWN")
-              .reduce((max, db) => { const rn = parseInt(db.id.split("-")[1]) || 0; return rn > max ? rn : max; }, 0);
-            const newM = mk(c, highest + 1);
-            localMks.push(newM);
-            syncMarketToDb(newM);
-          }
-        });
+        while (openSyms.size < NUM_UPDOWN_MARKETS) {
+          const sym = pickUpdownCoin(openSyms);
+          if (!sym) break;
+          const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
+          localMks.push(newM);
+          syncMarketToDb(newM);
+          openSyms.add(sym);
+        }
         // Create battle market if none exists (battleCoinMap already populated by fetchBattleCoinMetadata)
         const hasOpenBattle = dbMarkets.some(db => db.status === "OPEN" && db.market_type === "BATTLE");
         if (!hasOpenBattle && Object.keys(battleCoinMap).length >= 2) {
@@ -2495,6 +3116,10 @@ function App() {
             const battleM = mkBattle(cA, cB, highestBattle + 1);
             localMks.push(battleM);
             syncMarketToDb(battleM);
+            // Seed initial snapshot so chart has an origin point
+            supabase.from("labs_trend_snapshots").insert({
+              market_id: battleM.id, score_a: battleM.mc, score_b: battleM.mcB
+            });
           }
         }
         setMks(dedup(localMks));
@@ -2532,7 +3157,7 @@ function App() {
       } else if (saved && saved.mks && saved.mks.length > 0) {
         // Fallback to localStorage
         const restoredMks = saved.mks.map(m => {
-          const freshCoin = coinMap[m.c.sym];
+          const freshCoin = battleCoinMap[m.c.sym];
           if (freshCoin) {
             return { ...m, c: { ...m.c, img: freshCoin.img, color: freshCoin.color } };
           }
@@ -2548,13 +3173,43 @@ function App() {
         // Sync to Supabase
         restoredMks.forEach(m => syncMarketToDb(m));
       } else {
-        // First time - create fresh markets
-        const newMks = coins.map(c => mk(c, 1));
+        // First time - create fresh UP/DOWN markets from random battle coins
+        const newMks = [];
+        const usedSyms = new Set();
+        let round = 1;
+        while (usedSyms.size < NUM_UPDOWN_MARKETS) {
+          const sym = pickUpdownCoin(usedSyms);
+          if (!sym) break;
+          newMks.push(mk(battleCoinMap[sym], round++));
+          usedSyms.add(sym);
+        }
         setMks(newMks);
 
         // Sync new markets to Supabase
         newMks.forEach(m => syncMarketToDb(m));
       }
+      // Fetch trend/battle snapshots for initial render (so chart doesn't flash)
+      if (dbMarkets) {
+        const trendIds = dbMarkets.filter(d => d.market_type === 'TRENDS' || d.market_type === 'BATTLE').map(d => d.id);
+        if (trendIds.length > 0) {
+          const { data: snaps } = await supabase.from('labs_trend_snapshots')
+            .select('market_id,score_a,score_b,recorded_at')
+            .in('market_id', trendIds)
+            .order('recorded_at', { ascending: true });
+          if (snaps) {
+            const grouped = {};
+            snaps.forEach(s => {
+              if (!grouped[s.market_id]) grouped[s.market_id] = [];
+              grouped[s.market_id].push(s);
+            });
+            trendSnapsRef.current = grouped;
+          }
+        }
+      }
+      // Fetch prediction markets from meme.com
+      const pms = await fetchPredictionMarkets(auth?.token);
+      setPmMarkets(pms);
+
       dbLoaded.current = true;
       setLoading(false);
     };
@@ -2612,31 +3267,100 @@ function App() {
     }
   }, [authToken]);
 
+  // Retweet cooldown timer
+  useEffect(() => {
+    if (retweetState !== "cooldown") return;
+    const i = setInterval(() => {
+      setRetweetCooldown(prev => {
+        if (prev <= 1) {
+          setRetweetState("ready");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(i);
+  }, [retweetState]);
+
+  // Retweet handler — opens X popup, polls for close, claims reward
+  const handleRetweet = useCallback(async () => {
+    if (!authToken || !retweetTweet || retweetState !== "ready") return;
+    setRetweetState("retweeting");
+
+    const tweetIdExternal = retweetTweet.tweet_id_external;
+    const tweetIdInternal = retweetTweet.id;
+    const popup = window.open(
+      `https://x.com/intent/retweet?tweet_id=${tweetIdExternal}`,
+      "rtPopup", "width=600,height=400"
+    );
+
+    // Poll until popup closes
+    await new Promise(resolve => {
+      const check = setInterval(() => {
+        if (!popup || popup.closed) { clearInterval(check); resolve(); }
+      }, 200);
+    });
+
+    // Claim reward
+    const result = await claimRetweetReward(authToken, tweetIdInternal);
+    if (result) {
+      const reward = result.updated_by_amount || 0;
+      setRetweetReward(reward);
+      setRetweetState("completed");
+      // Refresh memescore
+      const balances = await fetchLabsBalance(authToken);
+      setMemescore(balances.memescore);
+      // After 3s, hide the card
+      setTimeout(() => {
+        setRetweetQuest(null);
+      }, 3000);
+    } else {
+      // Claim failed — reset to ready so user can retry
+      setRetweetState("ready");
+    }
+  }, [authToken, retweetTweet, retweetState, memeUser]);
+
   // Price feed from CoinGecko (every 60s for UPDOWN, separate CG Pro for battles), synced to DB
   useEffect(() => {
     if (mks.length === 0) return;
 
     const updatePrices = async () => {
-      // UPDOWN price feed (free tier)
-      const updownMarkets = mks.filter(m => m.st === "OPEN" && m.type !== "BATTLE");
+      // UPDOWN price feed (CG Pro — coins come from BATTLE_COINS pool)
+      const updownMarkets = mks.filter(m => m.st === "OPEN" && m.type !== "BATTLE" && m.type !== "TRENDS");
       if (updownMarkets.length > 0) {
-        const coins = updownMarkets.map(m => m.c);
-        const prices = await fetchPrices(coins);
-        if (supabase && Object.keys(prices).length > 0) {
-          const now = new Date().toISOString();
-          for (const m of updownMarkets) {
-            const data = prices[m.c.sym.toLowerCase()];
-            // Only update if price changed by >0.5% to avoid source jitter
-            if (data && data.mcap && m.mc > 0) {
-              const pctDiff = Math.abs(data.mcap - m.mc) / m.mc;
-              if (pctDiff > 0.005) {
-                await supabase.from("labs_markets").update({
-                  current_mc: data.mcap,
-                  price_updated_at: now
-                }).eq("id", m.id);
+        try {
+          const cgIds = updownMarkets.map(m => BATTLE_COINS[m.c.sym]).filter(Boolean);
+          if (cgIds.length > 0) {
+            const cgRes = await fetch(
+              `${CG_PRO_API}/coins/markets?vs_currency=usd&ids=${cgIds.join(",")}&order=market_cap_desc`,
+              { headers: CG_PRO_HEADERS }
+            );
+            if (cgRes.ok) {
+              const cgData = await cgRes.json();
+              const priceMap = {};
+              cgData.forEach(coin => {
+                const entry = Object.entries(BATTLE_COINS).find(([, id]) => id === coin.id);
+                if (entry) priceMap[entry[0]] = { mcap: coin.market_cap };
+              });
+              if (supabase) {
+                const now = new Date().toISOString();
+                for (const m of updownMarkets) {
+                  const data = priceMap[m.c.sym];
+                  if (data && data.mcap && m.mc > 0) {
+                    const pctDiff = Math.abs(data.mcap - m.mc) / m.mc;
+                    if (pctDiff > 0.001) {
+                      await supabase.from("labs_markets").update({
+                        current_mc: data.mcap,
+                        price_updated_at: now
+                      }).eq("id", m.id);
+                    }
+                  }
+                }
               }
             }
           }
+        } catch (e) {
+          console.warn("UPDOWN CG Pro price fetch failed:", e);
         }
       }
 
@@ -2659,6 +3383,14 @@ function App() {
               if (coinACg) update.current_mc = coinACg.market_cap;
               if (coinBCg) update.current_mc_b = coinBCg.market_cap;
               await supabase.from("labs_markets").update(update).eq("id", battleMarket.id);
+              // Record snapshot for battle chart
+              if (coinACg && coinBCg) {
+                await supabase.from("labs_trend_snapshots").insert({
+                  market_id: battleMarket.id,
+                  score_a: coinACg.market_cap,
+                  score_b: coinBCg.market_cap
+                });
+              }
             }
             lastBattlePriceCall = Date.now();
           }
@@ -2689,6 +3421,23 @@ function App() {
       const dbMap = {};
       dbMarkets.forEach(db => { dbMap[db.id] = db; });
 
+      // Fetch trend/battle snapshots for sparkline
+      const trendIds = dbMarkets.filter(d => d.market_type === 'TRENDS' || d.market_type === 'BATTLE').map(d => d.id);
+      if (trendIds.length > 0) {
+        const { data: snaps } = await supabase.from('labs_trend_snapshots')
+          .select('market_id,score_a,score_b,recorded_at')
+          .in('market_id', trendIds)
+          .order('recorded_at', { ascending: true });
+        if (snaps) {
+          const grouped = {};
+          snaps.forEach(s => {
+            if (!grouped[s.market_id]) grouped[s.market_id] = [];
+            grouped[s.market_id].push(s);
+          });
+          trendSnapsRef.current = grouped;
+        }
+      }
+
       setMks(prev => {
         const localIds = new Set(prev.map(m => m.id));
         let updated = prev.map(m => {
@@ -2696,14 +3445,14 @@ function App() {
           if (!db) return m;
           const b = m.b;
           const si = sideInv[m.id] || {};
-          const battleExtra = m.type === "BATTLE" ? {
-            mcB: Number(db.current_mc_b) || m.mcB,
-            startMcB: Number(db.start_mc_b) || m.startMcB
+          const battleExtra = (m.type === "BATTLE" || m.type === "TRENDS") ? {
+            mcB: db.current_mc_b != null ? Number(db.current_mc_b) : m.mcB,
+            startMcB: db.start_mc_b != null ? Number(db.start_mc_b) : m.startMcB
           } : {};
           // If DB says resolved but local says open, sync resolution
           if (db.status === "RES" && m.st === "OPEN") {
             return { ...m, st: "RES", res: db.result,
-              mc: Number(db.current_mc) || m.mc,
+              mc: db.current_mc != null ? Number(db.current_mc) : m.mc,
               qY: (Number(db.q_yes) || 0) + b,
               qN: (Number(db.q_no) || 0) + b,
               fp: Number(db.fee_pool) || 0,
@@ -2719,8 +3468,8 @@ function App() {
           if (m.st !== "OPEN") return { ...m, fp: Number(db.fee_pool) || m.fp || 0, pot: Number(db.total_pot) || m.pot || 0, wws: Number(db.winner_weight_sum) || m.wws || 0, wis: Number(db.winner_invested_sum) || m.wis || 0, yInv: si.YES || m.yInv || 0, nInv: si.NO || m.nInv || 0, ...battleExtra };
           return {
             ...m,
-            mc: Number(db.current_mc) || m.mc,
-            startMc: Number(db.start_mc) || m.startMc,
+            mc: db.current_mc != null ? Number(db.current_mc) : m.mc,
+            startMc: db.start_mc != null ? Number(db.start_mc) : m.startMc,
             ea: db.expires_at ? new Date(db.expires_at).getTime() : m.ea,
             qY: (Number(db.q_yes) || 0) + b,
             qN: (Number(db.q_no) || 0) + b,
@@ -2733,7 +3482,7 @@ function App() {
         });
         // Add any new markets from DB that we don't have locally (OPEN, or resolved with position)
         dbMarkets.filter(db => !localIds.has(db.id) && (db.status === "OPEN" || (db.status === "RES" && pos[db.id] && !pos[db.id].claimed))).forEach(db => {
-          const coinData = prev.find(m => m.c.sym === db.coin_symbol)?.c || (db.market_type === "BATTLE" ? battleCoinMap[db.coin_symbol] : null);
+          const coinData = prev.find(m => m.c.sym === db.coin_symbol)?.c || battleCoinMap[db.coin_symbol] || null;
           const coinDataB = db.coin_b_symbol ? (prev.find(m => m.cB?.sym === db.coin_b_symbol)?.cB || battleCoinMap[db.coin_b_symbol]) : null;
           updated.push(dbMarketToLocal(db, coinData, coinDataB));
         });
@@ -2750,6 +3499,17 @@ function App() {
     return () => clearInterval(i);
   }, [loading, mks.length]);
 
+  // Periodic prediction market refresh (every 30 seconds)
+  useEffect(() => {
+    if (loading) return;
+    const refresh = async () => {
+      const pms = await fetchPredictionMarkets(authToken);
+      setPmMarkets(pms);
+    };
+    const i = setInterval(refresh, 30000);
+    return () => clearInterval(i);
+  }, [loading, authToken]);
+
   // Timer tick (for countdown display)
   useEffect(() => {
     const i = setInterval(() => tick(t => t+1), 1000);
@@ -2760,36 +3520,42 @@ function App() {
   useEffect(() => {
     const i = setInterval(() => {
       setMks(p => {
-        const openByKey = new Set(p.filter(m => m.st === "OPEN").map(m =>
-          m.type === "BATTLE" ? "BATTLE" : m.c.sym
-        ));
+        const openUpdown = p.filter(m => m.st === "OPEN" && !m.type);
+        const openUpdownSyms = new Set(openUpdown.map(m => m.c.sym));
+        const hasOpenBattle = p.some(m => m.st === "OPEN" && m.type === "BATTLE");
         const resolved = p.filter(m => m.st === "RES");
         const newMarkets = [];
-        resolved.forEach(m => {
-          // Skip if user has unclaimed position
-          if (pos[m.id] && !pos[m.id].claimed) return;
-          const key = m.type === "BATTLE" ? "BATTLE" : m.c.sym;
-          if (openByKey.has(key)) return;
-          if (m.type === "BATTLE") {
-            // New random matchup for battle
-            const matchup = pickBattleMatchup(battleCoinMap);
-            if (matchup) {
-              const [symA, symB] = matchup;
-              const newM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], m.rn + 1);
-              newMarkets.push(newM);
-              openByKey.add("BATTLE");
-            }
-          } else {
-            const newM = mk({ ...m.c, mcap: m.mc }, m.rn + 1);
+        // Clean up resolved markets the user has claimed/dismissed
+        const dismissable = resolved.filter(m => !pos[m.id] || pos[m.id].claimed);
+        // Auto-renew battles
+        const resolvedBattle = dismissable.find(m => m.type === "BATTLE");
+        if (resolvedBattle && !hasOpenBattle) {
+          const matchup = pickBattleMatchup(battleCoinMap);
+          if (matchup) {
+            const [symA, symB] = matchup;
+            const newM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], resolvedBattle.rn + 1);
             newMarkets.push(newM);
-            openByKey.add(m.c.sym);
+            // Seed initial snapshot so chart has an origin point
+            supabase.from("labs_trend_snapshots").insert({
+              market_id: newM.id, score_a: newM.mc, score_b: newM.mcB
+            });
           }
-        });
+        }
+        // Auto-renew UP/DOWN — fill up to NUM_UPDOWN_MARKETS with random coins
+        const resolvedUpdown = dismissable.filter(m => !m.type || m.type === "UPDOWN");
+        for (const m of resolvedUpdown) {
+          if (openUpdownSyms.size >= NUM_UPDOWN_MARKETS) break;
+          const sym = pickUpdownCoin(openUpdownSyms);
+          if (!sym) break;
+          const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
+          newMarkets.push(newM);
+          openUpdownSyms.add(sym);
+        }
         if (newMarkets.length === 0) return p;
         // Sync new markets to DB (prevent_duplicate_open trigger is safety net)
         newMarkets.forEach(m => syncMarketToDb(m));
         // Remove old resolved markets (that had no unclaimed position) and add new ones
-        const resolvedIds = new Set(resolved.filter(m => !pos[m.id] || pos[m.id].claimed).map(m => m.id));
+        const resolvedIds = new Set(dismissable.map(m => m.id));
         return dedup([...p.filter(m => !resolvedIds.has(m.id)), ...newMarkets]);
       });
     }, 5000);
@@ -2808,13 +3574,14 @@ function App() {
           const hasBonus = won && (m.fp || 0) > 0;
           setNotification({
             id: m.id,
-            coin: m.type === "BATTLE" ? m.c.sym + " vs " + m.cB?.sym : m.c.sym,
+            coin: (m.type === "BATTLE" || m.type === "TRENDS") ? m.c.sym + " vs " + m.cB?.sym : m.c.sym,
             result: m.res,
             won,
             reward,
             hasBonus,
-            isBattle: m.type === "BATTLE",
-            winnerSym: m.type === "BATTLE" ? (m.res === "YES" ? m.c.sym : m.cB?.sym) : null
+            isBattle: m.type === "BATTLE" || m.type === "TRENDS",
+            isTrends: m.type === "TRENDS",
+            winnerSym: (m.type === "BATTLE" || m.type === "TRENDS") ? (m.res === "YES" ? m.c.sym : m.cB?.sym) : null
           });
           // Auto-dismiss after 5 seconds
           setTimeout(() => setNotification(n => n?.id === m.id ? null : n), 5000);
@@ -2827,6 +3594,10 @@ function App() {
     if (!memeUser) { setShowDeposit(true); return; }
     const m = mks.find(x => x.id===mid);
     if (!m || m.st !== "OPEN") return;
+
+    // 1% probability floor — prevent buying extremely cheap sides
+    const sideProb = side === "YES" ? yP(m.qY, m.qN, m.b) : (100 - yP(m.qY, m.qN, m.b));
+    if (sideProb < 1) return;
 
     // 2% entry fee — shares bought from net amount
     const fee = Math.round(amt * 0.02);
@@ -2867,6 +3638,7 @@ function App() {
             return { ...mk, qY: mk.b + data.new_q_yes, qN: mk.b + data.new_q_no, fp: data.fee_pool || mk.fp };
           }));
           setBal(data.new_balance);
+          setHist(h => [...h, { sym: m.c.sym, side, type: "BUY", result: null, amount: amt, pnl: null }]);
           setTimeout(refreshLeaderboard, 500);
           return;
         }
@@ -2876,6 +3648,7 @@ function App() {
     }
     // Fallback: deduct locally and sync
     setBal(b => b - amt);
+    setHist(h => [...h, { sym: m.c.sym, side, type: "BUY", result: null, amount: amt, pnl: null }]);
     syncMarketToDb(updatedMarket);
     syncPositionToDb(userId.current, mid, newPosition);
     recordTradeInDb(userId.current, mid, m.c.sym, side, shares, amt, 'BUY');
@@ -2926,6 +3699,7 @@ function App() {
           }));
           if (data.new_balance != null) setBal(data.new_balance);
           else setBal(b => b + netRf);
+          setHist(h => [...h, { sym: m.c.sym, side: pp.side, type: "SELL", result: null, amount: netRf, pnl }]);
           setTimeout(refreshLeaderboard, 500);
           return;
         }
@@ -2935,6 +3709,7 @@ function App() {
     }
     // Fallback: credit locally and sync
     setBal(b => b + netRf);
+    setHist(h => [...h, { sym: m.c.sym, side: pp.side, type: "SELL", result: null, amount: netRf, pnl }]);
     syncMarketToDb(updatedMarket);
     syncPositionToDb(userId.current, mid, null);
     recordTradeInDb(userId.current, mid, m.c.sym, pp.side, pp.sh, netRf, 'SELL', null, pnl);
@@ -2969,8 +3744,8 @@ function App() {
           setMyProfit(mp => mp + data.pnl);
           setPos(p => ({ ...p, [mid]: { ...p[mid], claimed: true } }));
           setHist(h => [...h, {
-            sym: m.c.sym, rn: m.rn, side: pp.side, result: m.res,
-            rw: data.total_payout, inv: pp.inv, bonus: data.fee_bonus || 0
+            sym: m.c.sym, side: pp.side, type: "CLAIM",
+            result: m.res, amount: data.total_payout, pnl: data.pnl
           }]);
           // Update fee pool locally
           if (data.fee_bonus > 0) {
@@ -2986,14 +3761,14 @@ function App() {
 
     // Fallback: manual claim (no fee bonus)
     const won = m.res===pp.side;
-    const rw = won && m.wws > 0
-      ? Math.min(pp.inv + Math.round(pp.sh / m.wws * (m.pot - m.wis)), pp.inv * 10)
-      : 0;
+    // POOL-SPLIT-V1: const poolRw = won && m.wws > 0 ? pp.inv + Math.round(pp.sh / m.wws * (m.pot - m.wis)) : 0;
+    // POOL-SPLIT-V1: const rw = won ? Math.max(poolRw, pp.sh) : 0;
+    const rw = won ? pp.sh : 0;
     const pnl = rw - pp.inv;
 
     setBal(b => b+rw);
     setPos(p => ({ ...p, [mid]:{ ...p[mid], claimed:true }}));
-    setHist(h => [...h, { sym:m.c.sym, rn:m.rn, side:pp.side, result:m.res, rw, inv:pp.inv }]);
+    setHist(h => [...h, { sym:m.c.sym, side:pp.side, type:"CLAIM", result:m.res, amount:rw, pnl }]);
 
     if (won) {
       setWins(w => w + 1);
@@ -3021,7 +3796,7 @@ function App() {
   // Build display list: resolved with unclaimed position takes priority over OPEN for same key
   const ranked = useMemo(() => {
     const resByKey = {};
-    const mKey = (m) => m.type === "BATTLE" ? battlePairKey(m.c.sym, m.cB?.sym || "") : m.c.sym;
+    const mKey = (m) => (m.type === "BATTLE" || m.type === "TRENDS") ? battlePairKey(m.c.sym, m.cB?.sym || "") : m.c.sym;
     mks.forEach(m => {
       if (m.st === "RES" && pos[m.id] && !pos[m.id].claimed) resByKey[mKey(m)] = m;
     });
@@ -3030,9 +3805,9 @@ function App() {
       if (m.st === "RES" && (!pos[m.id] || pos[m.id].claimed)) return false;
       return true;
     });
-    // Stable order: UPDOWN markets by symbol, battles go last
-    const updown = filtered.filter(m => m.type !== "BATTLE");
-    const battles = filtered.filter(m => m.type === "BATTLE");
+    // Stable order: UPDOWN markets by symbol, battles/trends go last
+    const updown = filtered.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS");
+    const battles = filtered.filter(m => m.type === "BATTLE" || m.type === "TRENDS");
     updown.sort((a, b) => a.c.sym.localeCompare(b.c.sym));
     return [...updown, ...battles];
   }, [mks, pos]);
@@ -3053,7 +3828,7 @@ function App() {
     <div style={{
       minHeight:"100vh", background:"#0c1018", color:"#fff",
       fontFamily:"'Mulish',sans-serif",
-      zoom: "150%"
+      zoom: isMobile ? undefined : "150%"
     }}>
       <link href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@400;900&family=Jersey+25&family=Mulish:wght@400;700&display=swap" rel="stylesheet"/>
 
@@ -3071,7 +3846,7 @@ function App() {
           <div>
             <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em" }}>
               {notification.isBattle
-                ? `$${notification.winnerSym} WON the battle!`
+                ? `${notification.isTrends ? "" : "$"}${notification.winnerSym} WON the battle!`
                 : `$${notification.coin} ${notification.result === "YES" ? "WENT UP!" : "WENT DOWN"}`}
             </div>
             <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".9em", opacity:.9 }}>
@@ -3158,7 +3933,7 @@ function App() {
             fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".75em" : ".9em",
             color:"#ffffff60"
           }}>
-            {isMobile ? "24h prediction rounds" : "Predict targets. Vote with conviction on your favorite memes. "}
+            Predict targets. Vote with conviction on your favorite memes.
           </div>
         </div>
 
@@ -3175,7 +3950,7 @@ function App() {
             gap: isMobile ? 12 : 16
           }}>
             {ranked.map(m =>
-              m.type === "BATTLE"
+              (m.type === "BATTLE" || m.type === "TRENDS")
                 ? <div key={m.id} style={{ gridColumn: isMobile ? undefined : "span 2" }}>
                     <BattleCard m={m} bal={bal} streak={streak}
                       pos={pos[m.id]||null}
@@ -3183,7 +3958,8 @@ function App() {
                       onBuy={onBuy} onSell={onSell} onClaim={onClaim}
                       isMobile={isMobile}
                       memeUser={memeUser}
-                      onLoginRequired={() => setShowDeposit(true)}/>
+                      onLoginRequired={() => setShowDeposit(true)}
+                      trendSnaps={trendSnapsRef.current}/>
                   </div>
                 : <Card key={m.id} m={m} bal={bal} streak={streak}
                     pos={pos[m.id]||null}
@@ -3193,21 +3969,19 @@ function App() {
                     memeUser={memeUser}
                     onLoginRequired={() => setShowDeposit(true)}/>
             )}
-            <TreasureChestCard
-              chestState={memeUser && chestQuest ? chestState : "cooldown"}
-              chestCooldown={memeUser && chestQuest ? chestCooldown : 0}
-              chestReward={chestReward}
-              chestQuest={chestQuest}
-              onClaim={memeUser ? handleChestClaim : () => setShowDeposit(true)}
-              isMobile={isMobile}/>
+            {[...pmMarkets].sort((a, b) => new Date(a.ending_date || a.expires_at || 0) - new Date(b.ending_date || b.expires_at || 0)).map(pm => (
+              <PredictionCard key={"pm-" + pm.market_id} pm={pm} memescore={memescore} authToken={authToken}
+                memeUser={memeUser} onLoginRequired={() => setShowDeposit(true)}
+                setMemescore={setMemescore} setPmMarkets={setPmMarkets}
+                isMobile={isMobile} />
+            ))}
           </div>
 
           <div style={{
             display: "flex",
             flexDirection: "column",
             gap: 16,
-            position: isMobile ? "static" : "sticky",
-            top: isMobile ? undefined : 60
+            position: "static"
           }}>
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
@@ -3220,13 +3994,13 @@ function App() {
                 borderBottom:"1px solid #ffffff0d",
                 display:"flex", alignItems:"center"
               }}>
-                <span style={{ flex:1, ...(ranked.filter(m => m.type !== "BATTLE").length > 0 && ranked.filter(m => m.type !== "BATTLE").every(m => yP(m.qY,m.qN,m.b) < 25) ? { color:"#f65e5e" } : {}) }}>{ranked.filter(m => m.type !== "BATTLE").length > 0 && ranked.filter(m => m.type !== "BATTLE").every(m => yP(m.qY,m.qN,m.b) < 25) ? "REKT BOARD" : "CONVICTION BOARD"}</span>
+                <span style={{ flex:1, ...(ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").length > 0 && ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").every(m => yP(m.qY,m.qN,m.b) < 25) ? { color:"#f65e5e" } : {}) }}>{ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").length > 0 && ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").every(m => yP(m.qY,m.qN,m.b) < 25) ? "REKT BOARD" : "CONVICTION BOARD"}</span>
                 <div style={{ display:"flex", fontFamily:"'Jersey 25',sans-serif", fontSize:".6em", color:"#ffffff30", textTransform:"uppercase" }}>
                   <span style={{ width:50, textAlign:"right", marginRight:8 }}>streak</span>
                   <span style={{ width:70, textAlign:"right" }}>pool</span>
                 </div>
               </div>
-              {ranked.filter(m => m.type !== "BATTLE").map((m,i) => {
+              {ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").map((m,i) => {
                 const coinForm = (marketHistory || [])
                   .filter(h => h.coin_symbol === m.c.sym)
                   .slice(0, 5);
@@ -3247,17 +4021,17 @@ function App() {
                     }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none" }}>${m.c.sym}</a></div>
                     <div style={{
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
-                      color: ranked.filter(r => r.type !== "BATTLE").length > 0 && ranked.filter(r => r.type !== "BATTLE").every(r => yP(r.qY,r.qN,r.b) < 25) ? "#f65e5e" : "#ffffff50"
+                      color: ranked.filter(r => r.type !== "BATTLE" && r.type !== "TRENDS").length > 0 && ranked.filter(r => r.type !== "BATTLE" && r.type !== "TRENDS").every(r => yP(r.qY,r.qN,r.b) < 25) ? "#f65e5e" : "#ffffff50"
                     }}>{yP(m.qY,m.qN,m.b)}% on UP</div>
                   </div>
                   {coinForm.length > 0 && (
-                    <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"flex-end", width:50, flexShrink:0 }}>
+                    <div style={{ display:"flex", gap:2, alignItems:"center", justifyContent:"flex-end", width:50, flexShrink:0 }}>
                       {coinForm.map((h,j) => (
                         <div key={j} style={{
-                          width:14, height:14, borderRadius:"50%",
+                          width:10, height:10, borderRadius:"50%",
                           background: h.result === "YES" ? "#22c55e" : "#ef4444",
                           display:"flex", alignItems:"center", justifyContent:"center",
-                          fontSize:8, fontWeight:700, color:"#fff"
+                          fontSize:6, fontWeight:700, color:"#fff"
                         }}>{h.result === "YES" ? "↑" : "↓"}</div>
                       ))}
                     </div>
@@ -3366,6 +4140,24 @@ function App() {
               })()}
             </div>
 
+            <TreasureChestCard
+              chestState={memeUser && chestQuest ? chestState : "cooldown"}
+              chestCooldown={memeUser && chestQuest ? chestCooldown : 0}
+              chestReward={chestReward}
+              chestQuest={chestQuest}
+              onClaim={memeUser ? handleChestClaim : () => setShowDeposit(true)}
+              isMobile={isMobile}/>
+
+            {retweetQuest && retweetState !== "loading" && !(retweetState === "completed" && retweetReward === 0) && (
+              <RetweetQuestCard
+                retweetState={memeUser ? retweetState : "completed"}
+                retweetCooldown={retweetCooldown}
+                retweetReward={retweetReward}
+                retweetQuest={retweetQuest}
+                onRetweet={memeUser ? handleRetweet : () => setShowDeposit(true)}
+                isMobile={isMobile}/>
+            )}
+
             {hist.length > 0 && (
               <div style={{
                 background:"linear-gradient(360deg,#212936,#4e596c)",
@@ -3377,22 +4169,31 @@ function App() {
                   textTransform:"uppercase", background:"#191f29",
                   borderBottom:"1px solid #ffffff0d"
                 }}>YOUR HISTORY</div>
-                {hist.slice(-5).reverse().map((h,i) => (
-                  <div key={i} style={{
-                    display:"flex", justifyContent:"space-between",
-                    padding:"10px 16px", background:"#191f29",
-                    borderBottom:"1px solid #ffffff08"
-                  }}>
-                    <span style={{
-                      fontFamily:"'Jersey 25',sans-serif",
-                      fontSize:".85em", color:"#ffffff60"
-                    }}>${h.sym}</span>
-                    <span style={{
-                      fontFamily:"'Jersey 25',sans-serif",
-                      color: h.result===h.side ? "#b6ffac" : "#f65e5e"
-                    }}>{h.result===h.side ? "+"+h.rw : "-"+h.inv}</span>
-                  </div>
-                ))}
+                {hist.slice(-5).reverse().map((h,i) => {
+                  const isBuy = h.type === "BUY";
+                  const isSell = h.type === "SELL";
+                  const isClaim = h.type === "CLAIM";
+                  const won = isClaim && h.pnl != null && h.pnl >= 0;
+                  const color = isBuy ? "#71BAFF" : isSell ? (h.pnl >= 0 ? "#b6ffac" : "#f65e5e") : won ? "#b6ffac" : "#f65e5e";
+                  const label = isBuy ? "BUY -" + h.amount
+                    : isSell ? (h.pnl >= 0 ? "SELL +" + h.amount : "SELL " + h.amount)
+                    : won ? "+" + h.amount : "-" + (h.amount - (h.pnl || 0));
+                  return (
+                    <div key={i} style={{
+                      display:"flex", justifyContent:"space-between",
+                      padding:"10px 16px", background:"#191f29",
+                      borderBottom:"1px solid #ffffff08"
+                    }}>
+                      <span style={{
+                        fontFamily:"'Jersey 25',sans-serif",
+                        fontSize:".85em", color:"#ffffff60"
+                      }}>${h.sym}</span>
+                      <span style={{
+                        fontFamily:"'Jersey 25',sans-serif", color
+                      }}>{label}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
