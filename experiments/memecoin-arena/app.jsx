@@ -4605,7 +4605,7 @@ function App() {
                     <div style={{
                       position:"relative", zIndex:1,
                       fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
-                      color:"#fff1a6", textShadow:"0 2px 8px rgba(0,0,0,0.6)",
+                      color:"#ffe4a0", textShadow:"0 2px 8px rgba(0,0,0,0.6)",
                       textTransform:"uppercase"
                     }}>Claimable points</div>
                     {/* Bottom row: progress bar + claim/timer button */}
