@@ -4485,7 +4485,7 @@ function App() {
             <div style={{ padding:"20px 40px" }}>
               <div style={{
                 fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
-                color:"#ffe4a0", marginBottom:10, marginLeft:16,
+                color:"#ffe4a0", marginBottom:18, marginLeft:16,
                 letterSpacing:".08em", display:"flex", alignItems:"center", justifyContent:"space-between"
               }}>
                 <span style={{ display:"flex", alignItems:"center", gap:10 }}>
