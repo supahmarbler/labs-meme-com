@@ -890,7 +890,7 @@ const yP = (qY, qN, B) => {
   const m = Math.max(y, n) / B;
   const eY = Math.exp(y/B - m), eN = Math.exp(n/B - m);
   const result = Math.round(eY / (eY + eN) * 100);
-  return isNaN(result) ? 50 : Math.min(99, Math.max(1, result));
+  return isNaN(result) ? 50 : Math.min(99, Math.max(0, result));
 };
 
 // Buy shares: cost -> shares (using binary search for numerical stability)
@@ -923,14 +923,14 @@ const sellShares = (qY, qN, B, shares, side) => {
   return Math.max(0, Math.round(oldCost - newCost));
 };
 
-// Max bet amount before hitting 1% probability floor on other side
+// Max bet amount before hitting 0.1% probability floor on other side
 const maxBetForFloor = (qY, qN, B, side) => {
-  // After buying maxShares on `side`, other side prob must stay >= 1%
-  // For YES: exp(qN/B) / (exp((qY+sh)/B) + exp(qN/B)) >= 0.01
-  // => sh <= B * ln(99) + qN - qY
+  // After buying maxShares on `side`, other side prob must stay >= 0.1%
+  // For YES: exp(qN/B) / (exp((qY+sh)/B) + exp(qN/B)) >= 0.001
+  // => sh <= B * ln(999) + qN - qY
   const maxShares = side === "YES"
-    ? B * Math.log(99) + qN - qY
-    : B * Math.log(99) + qY - qN;
+    ? B * Math.log(999) + qN - qY
+    : B * Math.log(999) + qY - qN;
   if (maxShares <= 0) return 0;
   const oldCost = costFn(qY, qN, B);
   const newQY = side === "YES" ? qY + maxShares : qY;
