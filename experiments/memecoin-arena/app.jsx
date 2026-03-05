@@ -3005,6 +3005,7 @@ function App() {
   const [memescore, setMemescore] = useState(0);
   const [showDeposit, setShowDeposit] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [flash, setFlash] = useState(null); // { msg, type: "error"|"ok" }
   const [holdings, setHoldings] = useState(null); // null = not loaded, [] = empty
   const [leaderboard, setLeaderboard] = useState([]);
   const [marketHistory, setMarketHistory] = useState([]);
@@ -3390,13 +3391,11 @@ function App() {
   // wins, losses, totalVolume are loaded from DB (source of truth)
   // totalVolume is incremented by labs_buy RPC on each trade
 
-  // Save state whenever it changes (only after DB values are loaded)
+  // Save state to localStorage whenever it changes (only after DB values are loaded)
+  // Note: wins/losses/streak are managed atomically by labs_claim RPC — never sync them from client
   useEffect(() => {
     if (loading || !dbLoaded.current || mks.length === 0) return;
     saveState({ mks, pos, bal, hist, streak, bestStreak, savedAt: Date.now() });
-
-    // Sync user stats to database (balance managed by RPCs only, volume by labs_buy RPC)
-    syncUserToDb(userId.current, totalVolume, wins, losses, streak, bestStreak);
   }, [mks, pos, bal, hist, streak, bestStreak, loading, wins, losses]);
 
   // Chest cooldown timer
@@ -3823,8 +3822,25 @@ function App() {
           return;
         }
         if (data && !data.success) {
-          // RPC rejected (different_side, insufficient_balance, etc.) — revert optimistic update
+          // RPC rejected — revert optimistic update and show error
           console.warn("labs_buy rejected:", data.error);
+          const msgs = {
+            insufficient_balance: "Not enough balance",
+            market_closed: "Market is closed",
+            different_side: "You already have a position on the other side",
+            probability_too_low: "Price too extreme to buy",
+            market_not_found: "Market not found",
+          };
+          setFlash({ msg: msgs[data.error] || "Bet failed — please try again", type: "error" });
+          setTimeout(() => setFlash(null), 4000);
+          setMks(p => p.map(mk => mk.id !== mid ? mk : m));
+          if (prevPos) setPos(p => ({ ...p, [mid]: prevPos }));
+          else setPos(p => { const n = { ...p }; delete n[mid]; return n; });
+          return;
+        }
+        if (error) {
+          setFlash({ msg: "Bet failed — please try again", type: "error" });
+          setTimeout(() => setFlash(null), 4000);
           setMks(p => p.map(mk => mk.id !== mid ? mk : m));
           if (prevPos) setPos(p => ({ ...p, [mid]: prevPos }));
           else setPos(p => { const n = { ...p }; delete n[mid]; return n; });
@@ -3889,6 +3905,14 @@ function App() {
           else setBal(b => b + netRf);
           setHist(h => [...h, { sym: m.c.sym, side: pp.side, type: "SELL", result: null, amount: netRf, pnl }]);
           setTimeout(refreshLeaderboard, 500);
+          return;
+        }
+        if ((data && !data.success) || error) {
+          // Sell failed — revert optimistic update
+          setFlash({ msg: "Sell failed — please try again", type: "error" });
+          setTimeout(() => setFlash(null), 4000);
+          setMks(p => p.map(x => x.id !== mid ? x : m));
+          setPos(p => ({ ...p, [mid]: pp }));
           return;
         }
       } catch (e) {
@@ -4157,7 +4181,9 @@ function App() {
                     memeUser={memeUser}
                     onLoginRequired={() => setShowDeposit(true)}/>
             )}
-            {[...pmMarkets].sort((a, b) => new Date(a.ending_date || a.expires_at || 0) - new Date(b.ending_date || b.expires_at || 0)).map(pm => (
+            {[...pmMarkets]
+              .filter(pm => !(pm.status === "RESOLVED" && (!pm.user_position || pm.user_position.claimed)))
+              .sort((a, b) => new Date(a.ending_date || a.expires_at || 0) - new Date(b.ending_date || b.expires_at || 0)).map(pm => (
               <PredictionCard key={"pm-" + pm.market_id} pm={pm} memescore={memescore} authToken={authToken}
                 memeUser={memeUser} onLoginRequired={() => setShowDeposit(true)}
                 setMemescore={setMemescore} setPmMarkets={setPmMarkets}
@@ -4444,7 +4470,6 @@ function App() {
                     fontFamily:"'Jersey 25',sans-serif", fontSize:".78em", color:"#ffffff50"
                   }}>
                     <span style={gld}>{bal.toLocaleString()} MEMESCORE</span>
-                    {streak > 0 && <span style={{ color:"#f65e5e", marginLeft:8 }}>{"\u{1F525}"} {streak}W streak</span>}
                   </div>
                 </div>
               </div>
@@ -4700,6 +4725,19 @@ function App() {
           onClose={handleChestDialogClose}
           isMobile={isMobile}
         />
+      )}
+
+      {flash && (
+        <div onClick={() => setFlash(null)} style={{
+          position:"fixed", bottom:32, left:"50%", transform:"translateX(-50%)",
+          background: flash.type === "error" ? "#dc2626" : "#16a34a",
+          color:"#fff", padding:"12px 24px", borderRadius:12,
+          fontFamily:"'Jersey 25',sans-serif", fontSize:"1.1em",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.5)", zIndex:999, cursor:"pointer",
+          animation:"fadeIn .2s ease"
+        }}>
+          {flash.msg}
+        </div>
       )}
 
     </div>
