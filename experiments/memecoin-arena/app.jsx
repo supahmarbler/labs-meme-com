@@ -3114,7 +3114,6 @@ function App() {
       // Step 1: Check auth and set userId before anything else
       const auth = getMemeAuth();
       let currentUser = null;
-      let v1Diamond = 0;
       if (auth) {
         const user = await fetchMemeUser(auth.token);
         if (user) {
@@ -3126,18 +3125,6 @@ function App() {
           // Fetch memescore from meme.com API (for deposit modal)
           const balances = await fetchLabsBalance(auth.token);
           setMemescore(balances.memescore);
-
-          // Fetch diamond hands boost from v1 farming API (seed initial value)
-          try {
-            const farmRes = await fetch(`${MEME_API}/farm/user_balance?meme_user_id=${user.id}`, {
-              headers: { "Authorization": `Bearer ${auth.token}` }
-            });
-            if (farmRes.ok) {
-              const farmData = await farmRes.json();
-              const dhBoost = Number(farmData.diamond_hands_boost) || 0;
-              if (dhBoost >= 1) v1Diamond = Math.round(dhBoost);
-            }
-          } catch (e) { /* non-critical */ }
 
           // Fetch farming quests (single API call for chest + retweet)
           const questData = await fetchFarmingQuests(auth.token);
@@ -3303,8 +3290,8 @@ function App() {
           setTotalVolume(dbUser.total_volume ?? 0);
           setMyProfit(dbUser.total_profit ?? 0);
           setLastCensusAt(dbUser.last_census_at || null);
-          // Diamond hands: v1 multiplier takes priority, labs census as fallback
-          setDiamondHands(v1Diamond || (dbUser.diamond_hands ? 1 : 0));
+          // Diamond hands: integer multiplier from labs_save_census (0-10)
+          setDiamondHands(dbUser.diamond_hands || 0);
         } else if (!currentUser && saved) {
           // Only fall back to localStorage for anonymous users (not logged-in users)
           if (saved.bal > 0) setBal(saved.bal);
@@ -4617,11 +4604,13 @@ function App() {
                           await runWalletCensus(userId.current, memeUser.wallets);
                           setLastCensusAt(new Date().toISOString());
                           await loadInventory(userId.current);
+                          // Read fresh diamond_hands multiplier (set by labs_save_census RPC)
                           const { data: freshUser } = await supabase.from("labs_users").select("diamond_hands").eq("id", userId.current).single();
-                          if (freshUser) setDiamondHands(prev => freshUser.diamond_hands ? Math.max(prev, 1) : 0);
+                          const freshDh = freshUser?.diamond_hands || 0;
+                          setDiamondHands(freshDh);
                           // Credit holdings-based reward
                           const { data: freshHoldings } = await supabase.from("labs_user_inventory").select("tier").eq("user_id", userId.current);
-                          const reward = calcHoldingsReward(freshHoldings, diamondHands);
+                          const reward = calcHoldingsReward(freshHoldings, freshDh);
                           if (reward > 0) {
                             await supabase.rpc('labs_claim_holdings_reward', {
                               p_user_id: userId.current,
