@@ -4526,7 +4526,8 @@ function App() {
               <div style={{
                 display:"grid",
                 gridTemplateColumns:"repeat(auto-fill, minmax(60px, 1fr))",
-                gap:8
+                gap:8,
+                marginLeft:16
               }}>
                 {inv.map((h, i) => {
                   const tc = tierColors[h.tier];
