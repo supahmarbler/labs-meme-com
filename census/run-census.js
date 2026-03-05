@@ -1,4 +1,13 @@
 /**
+ * DEPRECATED — Batch census replaced by per-user on-demand scanning.
+ *
+ * Scanning 26k wallets doesn't work with free RPCs. Instead, each user scans
+ * their own 1-3 wallets via a "SCAN NOW" button in the profile popup.
+ * See: app.jsx runWalletCensus() + migration-per-user-census.sql
+ *
+ * Keeping this file for reference. Do not delete yet.
+ *
+ * --- Original description ---
  * Weekly On-Chain Census for Memecoin Arena
  *
  * Pipeline: Load coins (Supabase) → Fetch prices (CoinGecko) → Scan EVM → Scan Solana → Write

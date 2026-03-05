@@ -30,6 +30,20 @@ SELECT * INTO v_market FROM labs_markets WHERE id = p_market_id FOR UPDATE;
 **Problem:** Free tier returns 429 errors, breaks app loading.
 **Fix:** Add fallback static data so app loads even when API fails.
 
+## Supabase Trigger Function Names (2026-03-03)
+**Problem:** Migration created `prevent_duplicate_open()` but the trigger called `labs_prevent_duplicate_open()` (with `labs_` prefix). Insert was silently rejected by RETURN NULL.
+**Fix:** Always check trigger definitions to find the actual function name before updating:
+```sql
+SELECT tgname, pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid = 'labs_markets'::regclass AND NOT tgisinternal;
+```
+
+## CHECK Constraints Block New Market Types (2026-03-03)
+**Problem:** `valid_market_expiry` CHECK only exempted `market_type = 'BATTLE'`. New TRENDS markets with non-13:00 expiry were silently rejected.
+**Fix:** Always check CHECK constraints when adding new market types:
+```sql
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'labs_markets'::regclass AND contype = 'c';
+```
+
 ## LMSR Base Liquidity Storage (2025-02-25)
 **Pattern:** Store q_yes/q_no WITHOUT base liquidity in database, add it back in frontend.
 - DB: `q_yes = 0, q_no = 0` (neutral market)

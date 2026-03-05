@@ -112,6 +112,20 @@ POST /labs/deposit   - Transfer memescore → labs balance
 POST /labs/withdraw  - Transfer labs balance → memescore
 ```
 
+### Farming Quests (sidebar cards)
+Both quest cards (Treasure Chest, Like & Retweet) use a single `GET /farming-quests/list_available` call via `fetchFarmingQuests()`. Individual quests extracted with `extractQuest(data, questType)`.
+
+**Treasure Chest** — `quest_type: "TREASURE_CHEST"`. User picks 1 of 3 chests → `POST /farming-quests/finish`. Shows 24h cooldown timer after claim.
+
+**Like & Retweet** — `quest_type: "RETWEET"`. Flow:
+1. `GET /farm/get_quest_tweet?meme_user_id=N` → `{ id, tweet_id_external, cooldown_until }`
+2. Open X popup: `x.com/intent/retweet?tweet_id=${tweet_id_external}`
+3. Poll `popup.closed`, then `POST /farm/claim_retweet_reward_points` with `{ tweet_id_internal: id }`
+4. Returns `{ updated_by_amount, current_memescore }`
+5. Card shows reward for 3s, then hides. Hidden when quest completed or unavailable.
+- Requires linked Twitter/X profile on meme.com (backend verifies retweet via Twitter API)
+- Reward amount from `quest.reward_meme_score` field
+
 ### Backend Files Created
 - `/Users/johanunger/meme-api-v2/src/app/routers/labs.py`
 - `/Users/johanunger/meme-api-v2/src/app/services/labs/labs_balance_service.py`
@@ -273,3 +287,20 @@ curl -s "https://vnteehkwrygodkljfwyp.supabase.co/rest/v1/labs_markets?select=*"
 - `vercel --prod` deploys both prod and preview environments from same code
 - Prod (`labs.meme.com`) → prod Supabase automatically
 - Any preview URL (`labs-meme-*.vercel.app`) or `localhost` → dev Supabase automatically
+- **Auth only works on prod domain** — preview URLs don't have the meme.com auth cookie/localStorage. Test quest features on `labs.meme.com`.
+
+## Session Notes (2026-03-03)
+
+### Like & Retweet Quest Card
+- Added `RetweetQuestCard` component to sidebar (below treasure chest)
+- Refactored `fetchChestQuest` → `fetchFarmingQuests` + `extractQuest` helper (single API call serves both chest and retweet)
+- New API functions: `fetchQuestTweet`, `claimRetweetReward`
+- Card uses X logo, `quest-retweet-v2.webp` background with 0.6 opacity overlay
+- Title: "Like & Retweet" with `#71baff` blue accent
+- Button states: LIKE & RT → spinner → +X MEMESCORE → hidden
+- Card hidden when quest completed or unavailable (not grayed out like chest)
+- `handleRetweet`: opens X intent popup, polls `popup.closed`, claims reward, refreshes memescore
+- Cooldown timer useEffect same pattern as chest
+- Reward amount from `quest.reward_meme_score` (not from params)
+- Backend verifies actual retweet via Twitter API using user's OAuth token
+- `claim_retweet_reward_points` expects `tweet_id_internal` (snake_case, not camelCase)
