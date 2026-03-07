@@ -322,7 +322,7 @@ const loadMarketsFromDb = async (includeResolved = false) => {
     // Filter out stale 5-min markets — only keep OPEN or markets expiring at 13:xx UTC
     return (data || []).filter(m => {
       if (m.status === "OPEN") return true;
-      if (m.market_type === "BATTLE" || m.market_type === "TRENDS") return true;
+      if (m.market_type === "BATTLE" || m.market_type === "TRENDS" || m.market_type === "CUSTOM") return true;
       const h = new Date(m.expires_at).getUTCHours();
       return h === 13;
     });
@@ -521,7 +521,7 @@ const loadMarketHistoryFromDb = async () => {
     if (error) throw error;
     // Filter out stale 5-min test markets — only keep markets expiring at 13:xx UTC
     return (data || []).filter(m => {
-      if (m.market_type === "BATTLE" || m.market_type === "TRENDS") return true;
+      if (m.market_type === "BATTLE" || m.market_type === "TRENDS" || m.market_type === "CUSTOM") return true;
       const h = new Date(m.expires_at).getUTCHours();
       return h === 13;
     });
@@ -625,6 +625,14 @@ const dbMarketToLocal = (db, coinData, coinDataB) => {
     if (db.trend_term_a) base.trendTermA = db.trend_term_a;
     if (db.trend_term_b) base.trendTermB = db.trend_term_b;
   }
+  if (db.market_type === "CUSTOM") {
+    base.type = "CUSTOM";
+    base.customTitle = db.custom_title;
+    base.customImageUrl = db.custom_image_url;
+    base.customDescription = db.custom_description;
+    base.labelYes = db.label_yes || "YES";
+    base.labelNo = db.label_no || "NO";
+  }
   return base;
 };
 
@@ -639,13 +647,13 @@ const BATTLE_COINS = {
   BITCOIN:"harrypotterobamasonic10inu-2-0", APU:"apu-s-club",
   SPX:"spx6900", TRUMP:"official-trump", TOSHI:"toshi",
   PONKE:"ponke", GIGA:"gigachad-2", FARTCOIN:"fartcoin",
-  BOBO:"bobo", MIGGLES:"mister-miggles", KEKEC:"the-balkan-dwarf",
+  BOBO:"bobo-coin", MIGGLES:"mister-miggles", KEKEC:"the-balkan-dwarf",
   SHIB:"shiba-inu", CULT:"cult-dao",
   TROLL:"troll-2", POPCAT:"popcat", WOJAK:"wojak",
   MEW:"cat-in-a-dogs-world", MUMU:"mumu-the-bull-3",
   TURBO:"turbo", BRETT:"based-brett", RETARDIO:"retardio",
   DOLAN:"dolan-duck", WIF:"dogwifhat",
-  NPC:"non-playable-coin", KEYCAT:"keyboard-cat"
+  NPC:"non-playable-coin", KEYCAT:"keyboard-cat-base"
 };
 
 // Battle coin colors — distinct palette so each side is visually clear
@@ -988,7 +996,7 @@ const mkBattle = (coinA, coinB, r) => {
   };
 };
 
-const NUM_UPDOWN_MARKETS = 4;
+const NUM_UPDOWN_MARKETS = 2;
 
 const pickUpdownCoin = (excludeSyms) => {
   const eligible = Object.keys(BATTLE_COINS).filter(sym => battleCoinMap[sym] && !excludeSyms.has(sym));
@@ -1032,6 +1040,50 @@ const CoinImg = ({ src, color, size, sym }) => {
         }}
         onError={() => setImgErr(true)}/>}
       {imgErr && <span>{(sym||"?")[0]}</span>}
+    </div>
+  );
+};
+
+// How to Play modal
+const HowToPlayModal = ({ isOpen, onClose, isMobile }) => {
+  if (!isOpen) return null;
+  const modalBase = {
+    position:"fixed", inset:0, background:"rgba(0,0,0,0.8)",
+    display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
+  };
+  const panelBase = {
+    background:"linear-gradient(180deg,#1a2332,#0c1018)",
+    borderRadius: isMobile ? "20px 20px 0 0" : 20,
+    padding: isMobile ? "24px 16px 32px" : 32,
+    width: isMobile ? "100%" : "auto",
+    minWidth: isMobile ? "auto" : 340,
+    maxWidth: isMobile ? "100%" : 420,
+    border:"1px solid #ffffff15",
+    textAlign:"left"
+  };
+  const stepStyle = {
+    fontFamily:"'Jersey 25',sans-serif", fontSize:".95em",
+    color:"#c8d6e5", lineHeight:1.6, marginBottom:8
+  };
+  return (
+    <div style={modalBase} onClick={onClose}>
+      <div style={panelBase} onClick={e => e.stopPropagation()}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.5em", color:"#fff" }}>HOW TO PLAY</div>
+          <button onClick={onClose} style={{
+            background:"none", border:"none", color:"#94a3b8", fontSize:"1.4em", cursor:"pointer", padding:4
+          }}>&times;</button>
+        </div>
+        <div style={stepStyle}><span style={{ color:"#71BAFF" }}>1.</span> Deposit memescore to get your arena balance</div>
+        <div style={stepStyle}><span style={{ color:"#71BAFF" }}>2.</span> Pick a coin and bet UP or DOWN</div>
+        <div style={stepStyle}><span style={{ color:"#71BAFF" }}>3.</span> Odds shift as more players join — early bets pay more</div>
+        <div style={stepStyle}><span style={{ color:"#71BAFF" }}>4.</span> Markets resolve at 14:00 UTC daily based on real prices</div>
+        <div style={stepStyle}><span style={{ color:"#71BAFF" }}>5.</span> Win? Claim your payout. Lose? Better luck next round</div>
+        <div style={{
+          fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
+          color:"#64748b", marginTop:16, textAlign:"center"
+        }}>Sell anytime before resolution to lock in profit or cut losses.</div>
+      </div>
     </div>
   );
 };
@@ -1627,6 +1679,349 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
   );
 };
 
+const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile, memeUser, onLoginRequired }) => {
+  const [step, setStep] = useState("sel");
+  const [side, setSide] = useState(null);
+  const [amt, setAmt] = useState("");
+  const [sec, setSec] = useState(0);
+
+  useEffect(() => {
+    const t = () => setSec(Math.max(0,Math.floor((m.ea-Date.now())/1000)));
+    t();
+    const i = setInterval(t,1000);
+    return () => clearInterval(i);
+  }, [m.ea]);
+
+  useEffect(() => {
+    if (m.st==="RES" && pos) setStep("res");
+    else if (m.st==="OPEN" && pos && !pos.claimed) setStep("pos");
+    else if (m.st==="OPEN") setStep("sel");
+  }, [m.st, pos]);
+
+  const yp = yP(m.qY, m.qN, m.b);
+  const np = 100-yp;
+  const grossRf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
+  const sellFee = pos && m.st === "OPEN" ? Math.round(grossRf * 0.02) : 0;
+  const rf = grossRf - sellFee;
+  const pnl = pos ? grossRf - pos.inv : 0;
+  const labelYes = m.labelYes || "YES";
+  const labelNo = m.labelNo || "NO";
+
+  const doBuy = () => {
+    const a = parseInt(amt)||0;
+    if (a<=0 || a>bal) return;
+    onBuy(m.id, side, a);
+    setAmt("");
+    setStep("pos");
+  };
+
+  const bx = {
+    height:38, display:"flex", alignItems:"center", justifyContent:"center",
+    width:"100%", fontFamily:"'Jersey 25',sans-serif", fontSize:"1em",
+    textTransform:"uppercase", borderRadius:15, cursor:"pointer",
+    border:"none", color:"#fff"
+  };
+
+  return (
+    <div style={{
+      background:"linear-gradient(360deg,#212936,#4e596c)",
+      boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      borderRadius:"16px 16px 25px 25px", padding:"5px 6px 10px"
+    }}>
+      <div style={{
+        background:"#191f29", borderRadius:14, padding:"14px 18px",
+        minHeight:192, display:"flex", flexDirection:"column",
+        justifyContent:"space-between"
+      }}>
+        {/* Header: image + title + countdown */}
+        <div style={{ display:"flex", alignItems:"center", marginBottom:12, gap:11, justifyContent:"space-between" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:11, minWidth:0, flex:1 }}>
+            <div style={{
+              width:40, height:40, borderRadius:12, flexShrink:0, overflow:"hidden",
+              border:"1px solid #ffffff1a", background:"#0c1018"
+            }}>
+              <img src={m.customImageUrl} alt="" style={{
+                width:"100%", height:"100%", objectFit:"cover", borderRadius:11
+              }} onError={e => { e.target.style.display="none"; }}/>
+            </div>
+            <div style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:".95em",
+              lineHeight:1.2, overflow:"hidden", textOverflow:"ellipsis",
+              display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical"
+            }}>{m.customTitle}</div>
+          </div>
+          <div style={{
+            padding:"2px 8px", borderRadius:8, flexShrink:0,
+            background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
+            border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
+            animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
+          }}>
+            <span style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
+              letterSpacing:"1px", ...gld
+            }}>{fT(sec)}</span>
+          </div>
+        </div>
+
+        {/* Position display */}
+        {pos && !pos.claimed && (
+          <div style={{
+            display:"flex", alignItems:"flex-start", gap:8, marginBottom:10,
+            flexWrap:"nowrap", overflow:"hidden"
+          }}>
+            <div style={{ minWidth:0, flexShrink:1 }}>
+              <div style={{
+                fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
+                color:"#ffffff40", marginBottom:2
+              }}>YOUR BET</div>
+              <div style={{
+                display:"flex", alignItems:"center", gap:4,
+                fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
+                whiteSpace:"nowrap"
+              }}>
+                <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
+                  {grossRf.toLocaleString()} {pos.side==="YES" ? labelYes : labelNo}
+                </span>
+                <span style={{
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
+                  color: pnl>=0 ? "#4ade80" : "#f65e5e"
+                }}>
+                  {pnl>=0 ? "▲" : "▼"} {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Probability bar */}
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <span style={{
+            fontSize:".65em", fontFamily:"'Jersey 25',sans-serif",
+            minWidth:42, textAlign:"center", color:"#71baff"
+          }}>{yp}% {labelYes}</span>
+          <div style={{
+            flex:1, height:12, borderRadius:62,
+            border:"1px solid #ffffff4d", overflow:"hidden", position:"relative"
+          }}>
+            <div style={{
+              position:"absolute", top:2, bottom:2, left:2,
+              width:"calc("+yp+"% - 2px)",
+              background:"linear-gradient(270deg,#FFFAC0 4%,#AED8FF 25%,#71BAFF 62%)",
+              borderRadius:"62px 0 0 62px"
+            }}/>
+            <div style={{
+              position:"absolute", top:2, bottom:2, right:2, left:yp+"%",
+              background:"linear-gradient(90deg,#8398FF 25%,#4023C3 62%)",
+              borderRadius:"0 62px 62px 0"
+            }}/>
+          </div>
+          <span style={{
+            fontSize:".65em", fontFamily:"'Jersey 25',sans-serif",
+            minWidth:42, textAlign:"center", color:"#a78bfa"
+          }}>{np}% {labelNo}</span>
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ minHeight:48 }}>
+          {step==="sel" && m.st==="OPEN" && !pos && (
+            <div style={{ display:"flex", gap:10 }}>
+              <button style={{ ...bx, background:"#71baff8a", opacity: yp < 1 ? 0.3 : 1 }}
+                disabled={yp < 1}
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}>
+                {labelYes} {yp < 1 ? "(locked)" : ""}
+              </button>
+              <button style={{ ...bx, background:"#234bc29e", border:"2px solid #c8dbff52", opacity: np < 1 ? 0.3 : 1 }}
+                disabled={np < 1}
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}>
+                {labelNo} {np < 1 ? "(locked)" : ""}
+              </button>
+            </div>
+          )}
+          {step==="sel" && m.st==="OPEN" && pos && !pos.claimed && (
+            <div style={{ display:"flex", gap:10 }}>
+              <button style={{ ...bx, background:"#71baff" }}
+                onClick={() => { setSide(pos.side); setStep("amt"); }}>
+                ADD MORE {pos.side === "YES" ? labelYes : labelNo}
+              </button>
+              <button style={{ ...bx, background:"#71baff8a" }}
+                onClick={() => setStep("sellConfirm")}>
+                SELL
+              </button>
+            </div>
+          )}
+
+          {step==="amt" && (() => {
+            const floorMax = maxBetForFloor(m.qY, m.qN, m.b, side);
+            const effectiveMax = Math.min(bal, floorMax);
+            const isFloorLimited = floorMax < bal;
+            return (
+            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+              <div style={{
+                display:"flex", justifyContent:"flex-end", alignItems:"center",
+                fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", gap:8
+              }}>
+                {isFloorLimited && <span style={{ color:"#f7931a" }}>MAX: {effectiveMax.toLocaleString()}</span>}
+                <span style={gld}>BAL: {bal.toLocaleString()}</span>
+              </div>
+              <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
+                value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
+                style={{
+                  height:42, border:"1px solid #4c5159", borderRadius:15,
+                  textAlign:"center", color:"#fff", background:"transparent",
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none",
+                  width:"100%"
+                }}/>
+              <div style={{ display:"flex", gap:6, marginBottom:4 }}>
+                {[10,25,50,100].map(p =>
+                  <button key={p}
+                    onClick={() => setAmt(String(Math.floor(effectiveMax*p/100)))}
+                    style={{
+                      flex:1, padding:"4px 0", borderRadius:8,
+                      fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
+                      background:"#00000042", border:"1px solid #ffffff15",
+                      color:"#ffffff80", cursor:"pointer"
+                    }}>{p}%</button>
+                )}
+              </div>
+              {amt && parseInt(amt) > 0 && (() => {
+                const a = parseInt(amt);
+                const net = a - Math.round(a * 0.02);
+                const feeStr = net.toLocaleString() + " after 2% fee";
+                if (net <= 0) return (
+                  <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff60", textAlign:"center", marginBottom:2 }}>{feeStr}</div>
+                );
+                const sh = buyShares(m.qY, m.qN, m.b, net, side);
+                if (sh <= 0) return (
+                  <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff60", textAlign:"center", marginBottom:2 }}>{feeStr}</div>
+                );
+                const payout = sh;
+                const multRaw = payout / net;
+                const mult = multRaw < 2 ? multRaw.toFixed(2) : multRaw.toFixed(1);
+                return (
+                  <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#ffffff60", textAlign:"center", marginBottom:2 }}>
+                    {feeStr} / ~{mult}x if {side==="YES"?labelYes:labelNo} wins
+                  </div>
+                );
+              })()}
+              {isFloorLimited && parseInt(amt) > effectiveMax && (
+                <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#f7931a", textAlign:"center", marginBottom:2 }}>
+                  Max bet {effectiveMax.toLocaleString()} (odds limit)
+                </div>
+              )}
+              <div style={{ display:"flex", gap:10 }}>
+                <button style={{ ...bx, background:"#00000042", flex:"0 0 40px" }}
+                  onClick={() => { setStep("sel"); setSide(null); setAmt(""); }}>
+                  X
+                </button>
+                <button
+                  style={{ ...bx, flex:"1 1 auto", background:side==="YES"?"#71baff8a":"#234bc29e" }}
+                  onClick={doBuy}
+                  disabled={!amt || parseInt(amt)<=0 || parseInt(amt)>effectiveMax}>
+                  BET {side==="YES"?labelYes:labelNo} {amt ? "("+parseInt(amt).toLocaleString()+")" : ""}
+                </button>
+              </div>
+            </div>
+          );})()}
+
+          {step==="pos" && pos && m.st==="OPEN" && (
+            <div style={{ display:"flex", gap:10 }}>
+              <button style={{ ...bx, background:"#71baff" }}
+                onClick={() => { setSide(pos.side); setStep("amt"); }}>
+                ADD MORE {pos.side === "YES" ? labelYes : labelNo}
+              </button>
+              <button style={{ ...bx, background:"#71baff8a" }}
+                onClick={() => setStep("sellConfirm")}>
+                SELL
+              </button>
+            </div>
+          )}
+
+          {step==="sellConfirm" && pos && m.st==="OPEN" && (() => {
+            const grossRf = sellShares(m.qY, m.qN, m.b, pos.sh, pos.side);
+            const netRf = grossRf - Math.round(grossRf * 0.02);
+            return (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <div style={{
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", textAlign:"center",
+                  color:"#fff", background:"#242a35", borderRadius:8, padding:"8px 12px"
+                }}>YOU WILL WITHDRAW 100% OF YOUR CURRENT POSITION.</div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button style={{ ...bx, background:"#00000042", flex:"0 0 50px" }}
+                    onClick={() => setStep("pos")}>✕</button>
+                  <button style={{ ...bx, background:"#71baff8a", flex:1 }}
+                    onClick={() => { setStep("pos"); onSell(m.id); }}>
+                    WITHDRAW TO GET {netRf.toLocaleString()}P
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {step==="res" && (() => {
+            const won = pos && m.res === pos.side;
+            const baseReward = won ? Math.round(pos.sh) : 0;
+            return (
+            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+              {pos && !pos.claimed && (
+                <button
+                  style={{ ...bx, background: won ? "#71baff" : "#f65e5e30" }}
+                  onClick={() => onClaim(m.id)}>
+                  {won
+                    ? "CLAIM " + baseReward.toLocaleString()
+                    : "YOU LOST. CLOSE."}
+                </button>
+              )}
+              {pos && pos.claimed && (
+                <div style={{
+                  fontFamily:"'Jersey 25',sans-serif", textAlign:"center", padding:8
+                }}>CLAIMED</div>
+              )}
+            </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display:"flex", alignItems:"center", marginTop:10,
+        padding:"0 16px 0 14px", justifyContent:"space-between"
+      }}>
+        <div style={{ display:"flex", alignItems:"center", fontSize:".75em", gap:8 }}>
+          {players.length > 0 && marketPool(m.qY, m.qN, m.b) > 0 && (
+            <div style={{ display:"flex", alignItems:"center" }}>
+              {players.slice(0, 3).map((p, i) => (
+                <div key={p.userId} style={{
+                  width:24, height:24, borderRadius:"50%", border:"2px solid #191f29",
+                  marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i,
+                  background: p.img ? `url(${p.img}) center/cover` : "linear-gradient(135deg,#4e596c,#212936)",
+                  position:"relative"
+                }}/>
+              ))}
+              {players.length > 3 && (
+                <span style={{
+                  fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
+                  color:"#ffffff60", marginLeft:4
+                }}>+{players.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{
+            fontFamily:"'Jersey 25',sans-serif", fontSize:".7em",
+            color:"#f7931a", background:"#f7931a15", padding:"2px 6px",
+            borderRadius:4, textTransform:"uppercase"
+          }}>PREDICTION</span>
+          {marketPool(m.qY, m.qN, m.b) > 0 && <span style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".85em" }}>
+            <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
+          </span>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TrendDualChart = ({ snapshots, m, aLeads, bLeads, colorOverride }) => {
   const startA = Number(m.startMc) || 0;
   const startB = Number(m.startMcB) || 0;
@@ -1672,7 +2067,7 @@ const TrendDualChart = ({ snapshots, m, aLeads, bLeads, colorOverride }) => {
 
   const colorA = colorOverride?.a || "#64B5F6", colorB = colorOverride?.b || "#a78bfa";
 
-  return React.createElement('div', { style: { marginBottom: 10, maxWidth: '60%', marginLeft: 'auto', marginRight: 'auto' } },
+  return React.createElement('div', { style: { width: '100%' } },
     React.createElement('svg', { width: '100%', viewBox: '0 0 ' + W + ' ' + H, style: { overflow: 'visible', display: 'block' } },
       React.createElement('path', { d: toPath(ptsA), fill: 'none', stroke: colorA, strokeWidth: aLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
       React.createElement('path', { d: toPath(ptsB), fill: 'none', stroke: colorB, strokeWidth: bLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
@@ -1712,6 +2107,41 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
   const colorA = m.c.color || "#71BAFF";
   const colorB = m.cB?.color || "#a78bfa";
 
+  // Snapshot-aware price computations (hoisted for use in header + price section)
+  let curA = m.mc, curB = m.mcB;
+  if (m.type === "TRENDS") {
+    const snaps = trendSnaps[m.id];
+    if (snaps && snaps.length > 0) {
+      const last = snaps[snaps.length - 1];
+      curA = Number(last.score_a) || m.mc;
+      curB = Number(last.score_b) || m.mcB;
+    }
+  }
+  const tPctA = m.type === "TRENDS" ? (m.startMc > 0 ? ((curA - m.startMc) / m.startMc * 100) : 0) : pctA;
+  const tPctB = m.type === "TRENDS" ? (m.startMcB > 0 ? ((curB - m.startMcB) / m.startMcB * 100) : 0) : pctB;
+  const aLeads = tPctA > tPctB;
+  const bLeads = tPctB > tPctA;
+  const tied = tPctA === tPctB;
+  const isLosingA = bLeads;
+  const isLosingB = aLeads;
+  const pctGradStyle = (pct, leads, gold, losing) => {
+    const grad = leads
+      ? (gold ? "linear-gradient(135deg, #FFD54F, #FF9800, #FFE082)" : "linear-gradient(135deg, #82B1FF, #448AFF, #B388FF)")
+      : losing ? (pct >= 0 ? "linear-gradient(135deg, #777, #999, #777)" : "linear-gradient(135deg, #b71c1c, #d32f2f, #e53935)")
+      : (pct >= 0 ? "linear-gradient(135deg, #4ade80, #22c55e)" : "linear-gradient(135deg, #f65e5e, #ef4444)");
+    const fallback = leads ? (gold ? "#FF9800" : "#448AFF") : losing ? (pct >= 0 ? "#999" : "#d32f2f") : (pct >= 0 ? "#4ade80" : "#f65e5e");
+    return {
+      fontFamily: "'Jersey 25',sans-serif", fontSize: "1.6em", fontWeight: 900, letterSpacing: 1,
+      color: fallback,
+      backgroundImage: grad,
+      backgroundClip: "text", WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      filter: leads ? `drop-shadow(0 0 8px ${gold ? "#FF980066" : "#448AFF66"})` : "none",
+      transition: "all 0.3s ease"
+    };
+  };
+  const hasBet = pos && !pos.claimed && m.st === "OPEN";
+
   const doBuy = () => {
     const a = parseInt(amt) || 0;
     if (a <= 0 || a > bal) return;
@@ -1740,14 +2170,39 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
-        {/* Face-off header: Coin A image | $A VS $B + Clock | Coin B image */}
+        {/* Unified header: 3-column grid — sides have image + % box, middle has title/clock + graph */}
         <div style={{
-          display: "flex", alignItems: "center", marginBottom: 14
+          display: "flex", alignItems: "flex-start", marginBottom: 14
         }}>
-          <div style={{ flex: "0 0 92px" }}>
+          {/* Left column: Coin A image + % box */}
+          <div style={{ flex: "0 0 92px", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
             <CoinImg src={m.c.img} color={colorA} size={92} sym={m.c.sym}/>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start",
+              width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 8, marginTop: 10,
+              background: aLeads ? ((m.type === "TRENDS" ? colorA : "#FFD54F") + "0a") : bLeads ? "#f65e5e0a" : "transparent",
+              border: aLeads ? ("1px solid " + (m.type === "TRENDS" ? colorA : "#FFD54F") + "25") : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
+              transition: "all 0.3s ease"
+            }}>
+              <div style={{
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".5em", marginBottom: 1,
+                color: aLeads ? (m.type === "TRENDS" ? colorA : "#FFD54F") : bLeads ? "#f65e5e" : "#ffffff30"
+              }}>{aLeads ? "WINNING" : bLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
+              {m.type === "TRENDS" ? (() => {
+                const chg = m.startMc > 0 ? ((curA - m.startMc) / m.startMc * 100) : 0;
+                const chgColor = aLeads ? "#4ade80" : chg >= 0 ? "#999" : "#f65e5e";
+                return <span style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", color: chgColor
+                }}>{chg >= 0 ? "+" : ""}{chg.toFixed(0)}%</span>;
+              })() : <span style={pctGradStyle(pctA, aLeads, true, isLosingA)}>
+                {pctA >= 0 ? "+" : ""}{pctA.toFixed(1)}%
+              </span>}
+              <div style={{
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".58em", color: "#ffffff58", marginTop: 1
+              }}>{m.type === "TRENDS" ? (<>{Math.round(m.startMc)} <span style={{ color: "#ffffff40" }}>→</span> {Math.round(curA)}</>) : (<>{fM(m.startMc)} → {fM(m.mc)}</>)}</div>
+            </div>
           </div>
-          <div style={{ flex: 1, textAlign: "center" }}>
+          {/* Middle column: title/clock on top, graph below */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div style={{
               fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.35em",
               textTransform: "uppercase", lineHeight: 1.2,
@@ -1772,144 +2227,62 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                 letterSpacing: "1px", ...gld
               }}>{fT(sec)}</span>
             </div>
+            {(m.type === "TRENDS" || m.type === "BATTLE") && <div style={{ width: "75%", marginTop: 6 }}>
+              {React.createElement(TrendDualChart, {
+                snapshots: trendSnaps[m.id] || [],
+                m: m, aLeads: aLeads, bLeads: bLeads,
+                colorOverride: m.type === "BATTLE" ? { a: colorA, b: colorB } : undefined
+              })}
+            </div>}
           </div>
-          <div style={{ flex: "0 0 92px", display: "flex", justifyContent: "flex-end" }}>
+          {/* Right column: Coin B image + % box */}
+          <div style={{ flex: "0 0 92px", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
             <CoinImg src={m.cB?.img} color={colorB} size={92} sym={m.cB?.sym}/>
-          </div>
-        </div>
-
-        {/* Price section: side-by-side % change with leader indicator */}
-        {(() => {
-          // For TRENDS, use latest snapshot so numbers match the chart endpoint
-          let curA = m.mc, curB = m.mcB;
-          if (m.type === "TRENDS") {
-            const snaps = trendSnaps[m.id];
-            if (snaps && snaps.length > 0) {
-              const last = snaps[snaps.length - 1];
-              curA = Number(last.score_a) || m.mc;
-              curB = Number(last.score_b) || m.mcB;
-            }
-          }
-          const tPctA = m.type === "TRENDS" ? (m.startMc > 0 ? ((curA - m.startMc) / m.startMc * 100) : 0) : pctA;
-          const tPctB = m.type === "TRENDS" ? (m.startMcB > 0 ? ((curB - m.startMcB) / m.startMcB * 100) : 0) : pctB;
-          const aLeads = tPctA > tPctB;
-          const bLeads = tPctB > tPctA;
-          const tied = tPctA === tPctB;
-          const isLosingA = bLeads;
-          const isLosingB = aLeads;
-          const pctStyle = (pct, leads, gold, losing) => {
-            const grad = leads
-              ? (gold ? "linear-gradient(135deg, #FFD54F, #FF9800, #FFE082)" : "linear-gradient(135deg, #82B1FF, #448AFF, #B388FF)")
-              : losing ? (pct >= 0 ? "linear-gradient(135deg, #777, #999, #777)" : "linear-gradient(135deg, #b71c1c, #d32f2f, #e53935)")
-              : (pct >= 0 ? "linear-gradient(135deg, #4ade80, #22c55e)" : "linear-gradient(135deg, #f65e5e, #ef4444)");
-            const fallback = leads ? (gold ? "#FF9800" : "#448AFF") : losing ? (pct >= 0 ? "#999" : "#d32f2f") : (pct >= 0 ? "#4ade80" : "#f65e5e");
-            return {
-              fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", fontWeight: 900, letterSpacing: 1,
-              color: fallback,
-              backgroundImage: grad,
-              backgroundClip: "text", WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              filter: leads ? `drop-shadow(0 0 8px ${gold ? "#FF980066" : "#448AFF66"})` : "none",
-              transition: "all 0.3s ease"
-            };
-          };
-          const hasBet = pos && !pos.claimed && m.st === "OPEN";
-          return (
-          <div style={{ marginBottom: 14 }}>
-            {(m.type === "TRENDS" || m.type === "BATTLE") && React.createElement(TrendDualChart, {
-              snapshots: trendSnaps[m.id] || [],
-              m: m, aLeads: aLeads, bLeads: bLeads,
-              colorOverride: m.type === "BATTLE" ? { a: colorA, b: colorB } : undefined
-            })}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between"
-            }}>
-            <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start",
-              padding: "4px 10px", borderRadius: 8,
-              background: aLeads ? ((m.type === "TRENDS" ? colorA : "#FFD54F") + "0a") : bLeads ? "#f65e5e0a" : "transparent",
-              border: aLeads ? ("1px solid " + (m.type === "TRENDS" ? colorA : "#FFD54F") + "25") : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
-              transition: "all 0.3s ease"
-            }}>
-              <div style={{
-                fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", marginBottom: 1,
-                color: aLeads ? (m.type === "TRENDS" ? colorA : "#FFD54F") : bLeads ? "#f65e5e" : "#ffffff30"
-              }}>{aLeads ? "WINNING" : bLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
-              {m.type === "TRENDS" ? (() => {
-                const chg = m.startMc > 0 ? ((curA - m.startMc) / m.startMc * 100) : 0;
-                const chgColor = aLeads ? "#4ade80" : chg >= 0 ? "#999" : "#f65e5e";
-                return <>
-                  <span style={{
-                    fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", color: chgColor
-                  }}>{chg >= 0 ? "+" : ""}{chg.toFixed(0)}%</span>
-                  <div style={{
-                    fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: aLeads ? colorA : "#ffffff60", marginTop: 2
-                  }}>{Math.round(m.startMc)} <span style={{ color: "#ffffff40" }}>→</span> {Math.round(curA)} <span style={{ color: "#ffffff40" }}>INTEREST</span></div>
-                </>;
-              })() : <>
-                <span style={pctStyle(pctA, aLeads, true, isLosingA)}>
-                  {pctA >= 0 ? "+" : ""}{pctA.toFixed(1)}%
-                </span>
-                <div style={{
-                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: "#ffffff58", marginTop: 2
-                }}>{fM(m.startMc)} → {fM(m.mc)}</div>
-              </>}
-            </div>
-            {hasBet && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, marginTop: -6 }}>
-                <div style={{
-                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em",
-                  color: "#ffffff40", marginBottom: 2
-                }}>YOUR BET</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{
-                    fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em",
-                    color: pos.side === "YES" ? colorA : colorB
-                  }}>
-                    {grossRf.toLocaleString()} {pos.side === "YES" ? m.c.sym : (m.cB?.sym || "?")}
-                  </span>
-                  <span style={{
-                    fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
-                    color: pnl >= 0 ? "#4ade80" : "#f65e5e"
-                  }}>
-                    {pnl >= 0 ? "+" : ""}{pnl.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            )}
-            <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end",
-              padding: "4px 10px", borderRadius: 8,
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end",
+              width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 8, marginTop: 10,
               background: bLeads ? (colorB + "0a") : aLeads ? "#f65e5e0a" : "transparent",
               border: bLeads ? ("1px solid " + colorB + "25") : aLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
             }}>
               <div style={{
-                fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", marginBottom: 1,
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".5em", marginBottom: 1,
                 color: bLeads ? colorB : aLeads ? "#f65e5e" : "#ffffff30"
               }}>{bLeads ? "WINNING" : aLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
               {m.type === "TRENDS" ? (() => {
                 const chg = m.startMcB > 0 ? ((curB - m.startMcB) / m.startMcB * 100) : 0;
                 const chgColor = bLeads ? "#4ade80" : chg >= 0 ? "#999" : "#f65e5e";
-                return <>
-                  <span style={{
-                    fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", color: chgColor
-                  }}>{chg >= 0 ? "+" : ""}{chg.toFixed(0)}%</span>
-                  <div style={{
-                    fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: bLeads ? colorB : "#ffffff60", marginTop: 2
-                  }}>{Math.round(m.startMcB)} <span style={{ color: "#ffffff40" }}>→</span> {Math.round(curB)} <span style={{ color: "#ffffff40" }}>INTEREST</span></div>
-                </>;
-              })() : <>
-                <span style={pctStyle(pctB, bLeads, false, isLosingB)}>
-                  {pctB >= 0 ? "+" : ""}{pctB.toFixed(1)}%
-                </span>
-                <div style={{
-                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".45em", color: "#ffffff58", marginTop: 2
-                }}>{fM(m.startMcB)} → {fM(m.mcB)}</div>
-              </>}
+                return <span style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1.4em", color: chgColor
+                }}>{chg >= 0 ? "+" : ""}{chg.toFixed(0)}%</span>;
+              })() : <span style={pctGradStyle(pctB, bLeads, false, isLosingB)}>
+                {pctB >= 0 ? "+" : ""}{pctB.toFixed(1)}%
+              </span>}
+              <div style={{
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".58em", color: "#ffffff58", marginTop: 1
+              }}>{m.type === "TRENDS" ? (<>{Math.round(m.startMcB)} <span style={{ color: "#ffffff40" }}>→</span> {Math.round(curB)}</>) : (<>{fM(m.startMcB)} → {fM(m.mcB)}</>)}</div>
             </div>
           </div>
+        </div>
+        {hasBet && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{
+              fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em",
+              color: "#ffffff40"
+            }}>YOUR BET</span>
+            <span style={{
+              fontFamily: "'Jersey 25',sans-serif", fontSize: "1.1em",
+              color: pos.side === "YES" ? colorA : colorB
+            }}>
+              {grossRf.toLocaleString()} {pos.side === "YES" ? m.c.sym : (m.cB?.sym || "?")}
+            </span>
+            <span style={{
+              fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
+              color: pnl >= 0 ? "#4ade80" : "#f65e5e"
+            }}>
+              {pnl >= 0 ? "+" : ""}{pnl.toLocaleString()}
+            </span>
           </div>
-          );
-        })()}
+        )}
 
         {/* Probability bar: same style as normal markets */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -3004,6 +3377,7 @@ function App() {
   const [authToken, setAuthToken] = useState(null);
   const [memescore, setMemescore] = useState(0);
   const [showDeposit, setShowDeposit] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [flash, setFlash] = useState(null); // { msg, type: "error"|"ok" }
   const [holdings, setHoldings] = useState(null); // null = not loaded, [] = empty
@@ -3102,6 +3476,7 @@ function App() {
   const seenResolutions = useRef(new Set());
   const userId = useRef(null);
   const maxUpdownRound = useRef(0);
+  const battleRenewAttempted = useRef(null); // track which resolved battle we already tried to renew
   const trendSnapsRef = useRef({});
   const isMobile = useIsMobile();
 
@@ -3249,36 +3624,32 @@ function App() {
         const maxRound = dbMarkets.filter(db => (db.market_type || "UPDOWN") === "UPDOWN")
           .reduce((max, db) => { const rn = parseInt(db.id.split("-")[1]) || 0; return rn > max ? rn : max; }, 0);
         maxUpdownRound.current = maxRound;
-        // Create random UPDOWN markets until we have NUM_UPDOWN_MARKETS open
+        // Create random UPDOWN markets until we have NUM_UPDOWN_MARKETS open — sync to DB only
         const openSyms = new Set(dbMarkets.filter(db => db.status === "OPEN" && (db.market_type || "UPDOWN") === "UPDOWN").map(db => db.coin_symbol));
+        let needsRefetch = false;
         while (openSyms.size < NUM_UPDOWN_MARKETS) {
           const sym = pickUpdownCoin(openSyms);
           if (!sym) break;
           const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
-          localMks.push(newM);
           syncMarketToDb(newM);
           openSyms.add(sym);
+          needsRefetch = true;
         }
-        // Create battle market if none exists (battleCoinMap already populated by fetchBattleCoinMetadata)
-        const hasOpenBattle = dbMarkets.some(db => db.status === "OPEN" && db.market_type === "BATTLE");
-        if (!hasOpenBattle && Object.keys(battleCoinMap).length >= 2) {
-          const matchup = pickBattleMatchup(battleCoinMap);
-          if (matchup) {
-            const [symA, symB] = matchup;
-            const cA = battleCoinMap[symA];
-            const cB = battleCoinMap[symB];
-            const highestBattle = dbMarkets.filter(db => db.market_type === "BATTLE")
-              .reduce((max, db) => { const rn = parseInt(db.id.split("-").pop()) || 0; return rn > max ? rn : max; }, 0);
-            const battleM = mkBattle(cA, cB, highestBattle + 1);
-            localMks.push(battleM);
-            syncMarketToDb(battleM);
-            // Seed initial snapshot so chart has an origin point
-            supabase.rpc('labs_insert_snapshot', {
-              p_market_id: battleM.id, p_score_a: battleM.mc, p_score_b: battleM.mcB
-            });
-          }
-        }
+        // Battle markets are only created via auto-renew when the previous battle resolves
         setMks(dedup(localMks));
+        // Re-fetch from DB to pick up markets that actually got created (trigger may reject some)
+        if (needsRefetch) {
+          setTimeout(async () => {
+            const fresh = await loadMarketsFromDb(true);
+            if (!fresh) return;
+            const freshLocal = fresh.filter(db => db.status === "OPEN").map(db => {
+              const coinData = battleCoinMap[db.coin_symbol];
+              const coinDataB = db.coin_b_symbol ? battleCoinMap[db.coin_b_symbol] : null;
+              return dbMarketToLocal(db, coinData, coinDataB);
+            });
+            if (freshLocal.length > 0) setMks(prev => dedup([...prev, ...freshLocal]));
+          }, 1000);
+        }
 
         // Load user data from database — Supabase is source of truth for arena balance
         if (dbUser) {
@@ -3482,7 +3853,7 @@ function App() {
 
     const updatePrices = async () => {
       // UPDOWN price feed (CG Pro — coins come from BATTLE_COINS pool)
-      const updownMarkets = mks.filter(m => m.st === "OPEN" && m.type !== "BATTLE" && m.type !== "TRENDS");
+      const updownMarkets = mks.filter(m => m.st === "OPEN" && m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM");
       if (updownMarkets.length > 0) {
         try {
           const cgIds = updownMarkets.map(m => BATTLE_COINS[m.c.sym]).filter(Boolean);
@@ -3648,8 +4019,29 @@ function App() {
           const coinDataB = db.coin_b_symbol ? (prev.find(m => m.cB?.sym === db.coin_b_symbol)?.cB || battleCoinMap[db.coin_b_symbol]) : null;
           updated.push(dbMarketToLocal(db, coinData, coinDataB));
         });
+        // Remove phantom local markets that don't exist in DB (failed inserts the trigger rejected)
+        const dbIds = new Set(dbMarkets.map(db => db.id));
+        updated = updated.filter(m => dbIds.has(m.id));
         return dedup(updated);
       });
+
+      // Ensure we have enough OPEN UP/DOWN markets — create missing ones (DB trigger caps at 4)
+      const openUpdown = dbMarkets.filter(db => db.status === "OPEN" && (db.market_type === null || db.market_type === "UPDOWN"));
+      if (openUpdown.length < NUM_UPDOWN_MARKETS && Object.keys(battleCoinMap).length > 0) {
+        const openSyms = new Set(openUpdown.map(db => db.coin_symbol));
+        const allRounds = dbMarkets.filter(db => (db.market_type || "UPDOWN") === "UPDOWN")
+          .map(db => parseInt(db.id.split("-")[1]) || 0);
+        let round = Math.max(0, ...allRounds);
+        while (openSyms.size < NUM_UPDOWN_MARKETS) {
+          const sym = pickUpdownCoin(openSyms);
+          if (!sym) break;
+          const newM = mk(battleCoinMap[sym], ++round);
+          syncMarketToDb(newM);
+          openSyms.add(sym);
+        }
+        maxUpdownRound.current = Math.max(maxUpdownRound.current, round);
+      }
+      // Battle markets are only created via auto-renew when the previous battle resolves
     };
     const refreshAll = async () => {
       await refreshMarkets();
@@ -3689,36 +4081,36 @@ function App() {
         const newMarkets = [];
         // Clean up resolved markets the user has claimed/dismissed
         const dismissable = resolved.filter(m => !pos[m.id] || pos[m.id].claimed);
-        // Auto-renew battles
+        // Auto-renew battles — sync to DB only, let refreshMarkets pick it up (prevents flickering)
         const resolvedBattle = dismissable.find(m => m.type === "BATTLE");
-        if (resolvedBattle && !hasOpenBattle) {
+        if (resolvedBattle && !hasOpenBattle && battleRenewAttempted.current !== resolvedBattle.id) {
+          battleRenewAttempted.current = resolvedBattle.id;
           const matchup = pickBattleMatchup(battleCoinMap);
           if (matchup) {
             const [symA, symB] = matchup;
             const newM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], resolvedBattle.rn + 1);
-            newMarkets.push(newM);
-            // Seed initial snapshot so chart has an origin point
+            // Only sync to DB — don't add to local state. DB trigger deduplicates across clients.
+            // refreshMarkets (15s) will pick up whichever battle actually got created.
+            syncMarketToDb(newM);
             supabase.rpc('labs_insert_snapshot', {
               p_market_id: newM.id, p_score_a: newM.mc, p_score_b: newM.mcB
             });
           }
         }
-        // Auto-renew UP/DOWN — fill up to NUM_UPDOWN_MARKETS with random coins
-        const resolvedUpdown = dismissable.filter(m => !m.type || m.type === "UPDOWN");
-        for (const m of resolvedUpdown) {
-          if (openUpdownSyms.size >= NUM_UPDOWN_MARKETS) break;
-          const sym = pickUpdownCoin(openUpdownSyms);
-          if (!sym) break;
-          const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
-          newMarkets.push(newM);
-          openUpdownSyms.add(sym);
+        // Auto-renew UP/DOWN — sync to DB only, refreshMarkets picks them up
+        if (openUpdownSyms.size < NUM_UPDOWN_MARKETS) {
+          for (let n = openUpdownSyms.size; n < NUM_UPDOWN_MARKETS; n++) {
+            const sym = pickUpdownCoin(openUpdownSyms);
+            if (!sym) break;
+            const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
+            syncMarketToDb(newM);
+            openUpdownSyms.add(sym);
+          }
         }
-        if (newMarkets.length === 0) return p;
-        // Sync new markets to DB (prevent_duplicate_open trigger is safety net)
-        newMarkets.forEach(m => syncMarketToDb(m));
-        // Remove old resolved markets (that had no unclaimed position) and add new ones
+        // Clean up dismissed resolved markets from local state
+        if (dismissable.length === 0) return p;
         const resolvedIds = new Set(dismissable.map(m => m.id));
-        return dedup([...p.filter(m => !resolvedIds.has(m.id)), ...newMarkets]);
+        return p.filter(m => !resolvedIds.has(m.id));
       });
     }, 5000);
     return () => clearInterval(i);
@@ -3736,13 +4128,14 @@ function App() {
           const hasBonus = won && (m.fp || 0) > 0;
           setNotification({
             id: m.id,
-            coin: (m.type === "BATTLE" || m.type === "TRENDS") ? m.c.sym + " vs " + m.cB?.sym : m.c.sym,
+            coin: m.type === "CUSTOM" ? (m.customTitle || "Prediction") : (m.type === "BATTLE" || m.type === "TRENDS") ? m.c.sym + " vs " + m.cB?.sym : m.c.sym,
             result: m.res,
             won,
             reward,
             hasBonus,
             isBattle: m.type === "BATTLE" || m.type === "TRENDS",
             isTrends: m.type === "TRENDS",
+            isCustom: m.type === "CUSTOM",
             winnerSym: (m.type === "BATTLE" || m.type === "TRENDS") ? (m.res === "YES" ? m.c.sym : m.cB?.sym) : null
           });
           // Auto-dismiss after 5 seconds
@@ -3995,7 +4388,7 @@ function App() {
   // Build display list: resolved with unclaimed position takes priority over OPEN for same key
   const ranked = useMemo(() => {
     const resByKey = {};
-    const mKey = (m) => (m.type === "BATTLE") ? "BATTLE" : (m.type === "TRENDS") ? "TRENDS" : m.c.sym;
+    const mKey = (m) => (m.type === "BATTLE") ? "BATTLE" : (m.type === "TRENDS") ? "TRENDS" : (m.type === "CUSTOM") ? m.id : m.c.sym;
     mks.forEach(m => {
       if (m.st === "RES" && pos[m.id] && !pos[m.id].claimed) resByKey[mKey(m)] = m;
     });
@@ -4004,11 +4397,13 @@ function App() {
       if (m.st === "RES" && (!pos[m.id] || pos[m.id].claimed)) return false;
       return true;
     });
-    // Stable order: UPDOWN markets by symbol, battles/trends go last
-    const updown = filtered.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS");
+    // Stable order: UPDOWN markets by symbol, battles/trends, then customs last
+    const updown = filtered.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM");
     const battles = filtered.filter(m => m.type === "BATTLE" || m.type === "TRENDS");
+    const customs = filtered.filter(m => m.type === "CUSTOM");
     updown.sort((a, b) => a.c.sym.localeCompare(b.c.sym));
-    return [...updown, ...battles];
+    customs.sort((a, b) => a.ea - b.ea);
+    return [...updown, ...battles, ...customs];
   }, [mks, pos]);
 
   if (loading) {
@@ -4074,6 +4469,13 @@ function App() {
           }}>MEME.COM</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button onClick={() => setShowHowTo(true)} style={{
+            width:28, height:28, borderRadius:"50%", border:"1px solid #ffffff20",
+            background:"#0c1018", color:"#94a3b8", cursor:"pointer",
+            fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            flexShrink:0
+          }}>?</button>
           <button onClick={() => setShowDeposit(true)} style={{
             display:"flex", alignItems:"center", gap: isMobile ? 6 : 10,
             background:"#0c1018", padding: isMobile ? "6px 10px" : "8px 14px", borderRadius:12,
@@ -4160,6 +4562,14 @@ function App() {
                       onLoginRequired={() => setShowDeposit(true)}
                       trendSnaps={trendSnapsRef.current}/>
                   </div>
+                : m.type === "CUSTOM"
+                ? <CustomPredictionCard key={m.id} m={m} bal={bal}
+                    pos={pos[m.id]||null}
+                    players={marketPlayers[m.id]||[]}
+                    onBuy={onBuy} onSell={onSell} onClaim={onClaim}
+                    isMobile={isMobile}
+                    memeUser={memeUser}
+                    onLoginRequired={() => setShowDeposit(true)}/>
                 : <Card key={m.id} m={m} bal={bal} streak={streak}
                     pos={pos[m.id]||null}
                     players={marketPlayers[m.id]||[]}
@@ -4195,13 +4605,13 @@ function App() {
                 borderBottom:"1px solid #ffffff0d",
                 display:"flex", alignItems:"center"
               }}>
-                <span style={{ flex:1, ...(ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").length > 0 && ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").every(m => yP(m.qY,m.qN,m.b) < 25) ? { color:"#f65e5e" } : {}) }}>{ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").length > 0 && ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS").every(m => yP(m.qY,m.qN,m.b) < 25) ? "REKT BOARD" : "CONVICTION BOARD"}</span>
+                <span style={{ flex:1, ...(ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM").length > 0 && ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM").every(m => yP(m.qY,m.qN,m.b) < 25) ? { color:"#f65e5e" } : {}) }}>{ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM").length > 0 && ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM").every(m => yP(m.qY,m.qN,m.b) < 25) ? "REKT BOARD" : "CONVICTION BOARD"}</span>
                 <div style={{ display:"flex", fontFamily:"'Jersey 25',sans-serif", fontSize:".6em", color:"#ffffff30", textTransform:"uppercase" }}>
                   <span style={{ width:50, textAlign:"right", marginRight:8 }}>streak</span>
                   <span style={{ width:70, textAlign:"right" }}>pool</span>
                 </div>
               </div>
-              {[...ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS")].sort((a,b) => yP(b.qY,b.qN,b.b) - yP(a.qY,a.qN,a.b)).map((m,i) => {
+              {[...ranked.filter(m => m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM")].sort((a,b) => yP(b.qY,b.qN,b.b) - yP(a.qY,a.qN,a.b)).map((m,i) => {
                 const coinForm = (marketHistory || [])
                   .filter(h => h.coin_symbol === m.c.sym)
                   .slice(0, 5);
@@ -4222,7 +4632,7 @@ function App() {
                     }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none" }}>${m.c.sym}</a></div>
                     <div style={{
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".65em",
-                      color: ranked.filter(r => r.type !== "BATTLE" && r.type !== "TRENDS").length > 0 && ranked.filter(r => r.type !== "BATTLE" && r.type !== "TRENDS").every(r => yP(r.qY,r.qN,r.b) < 25) ? "#f65e5e" : "#ffffff50"
+                      color: ranked.filter(r => r.type !== "BATTLE" && r.type !== "TRENDS" && r.type !== "CUSTOM").length > 0 && ranked.filter(r => r.type !== "BATTLE" && r.type !== "TRENDS" && r.type !== "CUSTOM").every(r => yP(r.qY,r.qN,r.b) < 25) ? "#f65e5e" : "#ffffff50"
                     }}>{yP(m.qY,m.qN,m.b)}% on UP</div>
                   </div>
                   {coinForm.length > 0 && (
@@ -4688,6 +5098,8 @@ function App() {
           </div>
         </>);
       })()}
+
+      <HowToPlayModal isOpen={showHowTo} onClose={() => setShowHowTo(false)} isMobile={isMobile} />
 
       <DepositModal
         isOpen={showDeposit}
