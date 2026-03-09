@@ -274,6 +274,7 @@ const syncMarketToDb = async (m, retries = 2) => {
       p_coin_image: m.c.img,
       p_coin_color: m.c.color,
       p_current_mc: isTrends ? null : m.mc,
+      p_start_mc: m.startMc || m.mc,
       p_b: m.b,
       p_q_yes: Math.max(0, m.qY - m.b),
       p_q_no: Math.max(0, m.qN - m.b),
@@ -642,13 +643,12 @@ const MEME_SLUGS = { JOE:"joe-coin", STNK:"stonks-4", PEPE:"pepe", MOG:"mog-coin
 
 // Coin pool — UP/DOWN picks random coins, Battle picks matchups
 const BATTLE_COINS = {
-  PENGU:"pudgy-penguins", DOG:"dog-go-to-the-moon", PAIN:"pain",
-  BONK:"bonk", REKT:"rekt-2", ELONRWA:"elonrwa",
-  BITCOIN:"harrypotterobamasonic10inu-2-0", APU:"apu-s-club",
-  SPX:"spx6900", TRUMP:"official-trump", TOSHI:"toshi",
+  PENGU:"pudgy-penguins", DOG:"own-the-doge", PAIN:"pain",
+  REKT:"rekt-2", ELONRWA:"elonrwa", PEPE:"pepe",
+  BITCOIN:"harrypotterobamasonic10in", APU:"apu-s-club",
+  SPX:"spx6900", TOSHI:"toshi",
   PONKE:"ponke", GIGA:"gigachad-2", FARTCOIN:"fartcoin",
   BOBO:"bobo-coin", MIGGLES:"mister-miggles", KEKEC:"the-balkan-dwarf",
-  SHIB:"shiba-inu", CULT:"cult-dao",
   TROLL:"troll-2", POPCAT:"popcat", WOJAK:"wojak",
   MEW:"cat-in-a-dogs-world", MUMU:"mumu-the-bull-3",
   TURBO:"turbo", BRETT:"based-brett", RETARDIO:"retardio",
@@ -658,7 +658,7 @@ const BATTLE_COINS = {
 
 // Battle coin colors — distinct palette so each side is visually clear
 const BATTLE_COLORS = {
-  PENGU:"#4FC3F7", DOG:"#FF8A65", PAIN:"#E53935", BONK:"#FFB74D",
+  PENGU:"#4FC3F7", DOG:"#FF8A65", PAIN:"#E53935", BONK:"#FFB74D", PEPE:"#4CAF50",
   REKT:"#B71C1C", ELONRWA:"#7E57C2", BITCOIN:"#FF6F00", APU:"#66BB6A",
   SPX:"#E91E63", TRUMP:"#1565C0", TOSHI:"#00ACC1", PONKE:"#8D6E63",
   GIGA:"#F44336", FARTCOIN:"#5C6BC0", BOBO:"#795548", MIGGLES:"#26A69A",
@@ -678,17 +678,6 @@ let lastBattlePriceCall = 0;
 
 const CENSUS_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
-const CENSUS_TIERS = [
-  { name: "GOLD", min: 10000 },
-  { name: "SILVER", min: 1000 },
-  { name: "BRONZE", min: 10 },
-];
-
-const getCensusTier = (usdValue) => {
-  for (const t of CENSUS_TIERS) if (usdValue >= t.min) return t.name;
-  return null;
-};
-
 const HOLDINGS_DAILY_RATES = { GOLD: 10000, SILVER: 7000, BRONZE: 1500 };
 
 const calcHoldingsReward = (holdingsList, dhBoost) => {
@@ -698,144 +687,41 @@ const calcHoldingsReward = (holdingsList, dhBoost) => {
   return Math.floor(daily * 3 * (dhBoost / 10));
 };
 
-// ERC20 balanceOf(address) selector
-const BALANCE_OF_SEL = "0x70a08231";
+// Scan holdings via meme.com API — fetch user's coins and save via RPC
+const runHoldingsScan = async (uid, memeUserId, authToken) => {
+  if (!supabase || !memeUserId || !authToken) throw new Error("Login required to scan holdings");
 
-// Free public RPCs (one per EVM chain)
-const SCAN_RPCS = {
-  ethereum: "https://eth.llamarpc.com",
-  base: "https://base.llamarpc.com",
-};
-const SOLANA_SCAN_RPC = "https://api.mainnet-beta.solana.com";
-
-// Load labs_coins + CoinGecko prices (one HTTP call)
-const fetchCoinsWithPrices = async () => {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from("labs_coins").select("*").eq("active", true);
-  if (error || !data?.length) return [];
-  const cgIds = data.map(c => c.coingecko_id).join(",");
-  let prices = {};
-  try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd`);
-    if (res.ok) prices = await res.json();
-  } catch {}
-  return data.map(row => ({ ...row, price: prices[row.coingecko_id]?.usd || 0 })).filter(c => c.price > 0);
-};
-
-// Scan one EVM wallet — JSON-RPC batch of eth_call per chain (no ethers.js)
-const scanEvmWallet = async (walletAddress, coins) => {
-  const results = [];
-  const evmCoins = coins.filter(c => c.evm_contract);
-  if (!evmCoins.length) return results;
-
-  // Group by platform
-  const byPlatform = {};
-  evmCoins.forEach(c => {
-    const p = c.evm_platform || "ethereum";
-    (byPlatform[p] = byPlatform[p] || []).push(c);
+  const res = await fetch(`${MEME_API}/farm/get_user_coins?meme_user_id=${memeUserId}`, {
+    headers: { "Authorization": `Bearer ${authToken}` }
   });
+  if (!res.ok) throw new Error("Failed to fetch coins from meme.com (status " + res.status + ")");
+  const data = await res.json();
+  const coins = data.coin_balances || [];
+  if (!coins.length) throw new Error("No coin holdings found on meme.com. Your existing holdings are unchanged.");
 
-  const paddedAddr = walletAddress.toLowerCase().replace("0x", "").padStart(64, "0");
-
-  for (const [platform, pCoins] of Object.entries(byPlatform)) {
-    const rpcUrl = SCAN_RPCS[platform];
-    if (!rpcUrl) continue;
-
-    const batch = pCoins.map((coin, i) => ({
-      jsonrpc: "2.0", id: i, method: "eth_call",
-      params: [{ to: coin.evm_contract, data: BALANCE_OF_SEL + paddedAddr }, "latest"]
+  const levelToTier = { LEVEL_1: "BRONZE", LEVEL_2: "SILVER", LEVEL_3: "GOLD" };
+  const holdings = coins
+    .filter(c => c.user_coin_balance_level && levelToTier[c.user_coin_balance_level])
+    .map(c => ({
+      coin_symbol: (c.coin_key || "").toUpperCase(),
+      coin_name: c.coin_name || c.coin_key || "",
+      coin_image: c.coin_image_url || "",
+      wallet_address: "meme.com",
+      chain: "API",
+      token_balance: 0,
+      usd_value: 0,
+      tier: levelToTier[c.user_coin_balance_level]
     }));
 
-    try {
-      const res = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(batch)
-      });
-      const responses = await res.json();
-      for (const resp of (Array.isArray(responses) ? responses : [responses])) {
-        if (resp.error || !resp.result || resp.result === "0x" || BigInt(resp.result) === 0n) continue;
-        const coin = pCoins[resp.id];
-        const rawBal = BigInt(resp.result);
-        const tokenBal = Number(rawBal) / (10 ** (coin.evm_decimals || 18));
-        const usdVal = tokenBal * coin.price;
-        const tier = getCensusTier(usdVal);
-        if (tier) results.push({
-          coin_symbol: coin.symbol, coin_name: coin.name, coin_image: coin.image,
-          wallet_address: walletAddress, chain: "EVM",
-          token_balance: tokenBal, usd_value: usdVal, tier
-        });
-      }
-    } catch (err) { console.warn(`EVM scan ${platform}:`, err.message); }
-  }
-  return results;
-};
-
-// Scan one Solana wallet — single getTokenAccountsByOwner call
-const scanSolanaWallet = async (walletAddress, coins) => {
-  const results = [];
-  const solCoins = coins.filter(c => c.solana_mint);
-  if (!solCoins.length) return results;
-  const mintMap = {};
-  solCoins.forEach(c => { mintMap[c.solana_mint] = c; });
-
-  try {
-    const res = await fetch(SOLANA_SCAN_RPC, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0", id: 1, method: "getTokenAccountsByOwner",
-        params: [walletAddress, { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" }, { encoding: "jsonParsed" }]
-      })
-    });
-    const data = await res.json();
-    if (data.error) return results;
-    for (const acct of (data.result?.value || [])) {
-      const info = acct.account?.data?.parsed?.info;
-      if (!info) continue;
-      const coin = mintMap[info.mint];
-      if (!coin) continue;
-      const tokenBal = Number(info.tokenAmount?.uiAmount || 0);
-      const usdVal = tokenBal * coin.price;
-      const tier = getCensusTier(usdVal);
-      if (tier) results.push({
-        coin_symbol: coin.symbol, coin_name: coin.name, coin_image: coin.image,
-        wallet_address: walletAddress, chain: "SOLANA",
-        token_balance: tokenBal, usd_value: usdVal, tier
-      });
-    }
-  } catch (err) { console.warn("Solana scan:", err.message); }
-  return results;
-};
-
-// Orchestrate: classify wallets → fetch prices → scan in parallel → save via RPC
-const runWalletCensus = async (uid, wallets) => {
-  if (!supabase || !wallets?.length) throw new Error("No wallets to scan");
-
-  const coins = await fetchCoinsWithPrices();
-  if (!coins.length) throw new Error("No coins with prices available");
-
-  // Classify wallets — API returns plain strings, detect by format
-  const addrs = wallets.map(w => typeof w === "string" ? w : (w.wallet_address || w.address || ""));
-  const evmAddrs = addrs.filter(a => a.startsWith("0x"));
-  const solAddrs = addrs.filter(a => a && !a.startsWith("0x"));
-
-  console.log(`[CENSUS] Scanning ${evmAddrs.length} EVM + ${solAddrs.length} Solana wallets, ${coins.length} coins`);
-
-  const all = (await Promise.all([
-    ...evmAddrs.map(a => scanEvmWallet(a, coins)),
-    ...solAddrs.map(a => scanSolanaWallet(a, coins))
-  ])).flat();
-
-  console.log(`[CENSUS] Found ${all.length} holdings above threshold`);
+  if (!holdings.length) throw new Error("No holdings above threshold. Your existing holdings are unchanged.");
 
   const { error } = await supabase.rpc("labs_save_census", {
     p_user_id: uid,
-    p_holdings: all
+    p_holdings: holdings
   });
   if (error) throw new Error(error.message);
 
-  return all;
+  return holdings;
 };
 
 // Battle coin map (populated from CoinGecko Pro, correct images/names)
@@ -898,7 +784,7 @@ const yP = (qY, qN, B) => {
   const m = Math.max(y, n) / B;
   const eY = Math.exp(y/B - m), eN = Math.exp(n/B - m);
   const result = Math.round(eY / (eY + eN) * 100);
-  return isNaN(result) ? 50 : Math.min(99, Math.max(0, result));
+  return isNaN(result) ? 50 : Math.min(99, Math.max(1, result));
 };
 
 // Buy shares: cost -> shares (using binary search for numerical stability)
@@ -1370,8 +1256,8 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
               lineHeight:1.2
             }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none", textShadow:"none" }}>${m.c.sym}</a> Up or Down</div>
           </div>
-          <div style={{
-            padding:"2px 8px", borderRadius:8,
+          <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
+            padding:"2px 8px", borderRadius:8, cursor:"default",
             background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
             border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
             animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -1750,8 +1636,8 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
               display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical"
             }}>{m.customTitle}</div>
           </div>
-          <div style={{
-            padding:"2px 8px", borderRadius:8, flexShrink:0,
+          <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
+            padding:"2px 8px", borderRadius:8, flexShrink:0, cursor:"default",
             background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
             border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
             animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -2216,8 +2102,8 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                 ? <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermB || m.cB?.sym)}&date=now+${m.ca ? Math.round((m.ea - m.ca) / 86400000) : 7}-d`} target="_blank" rel="noopener noreferrer" style={{ color: "#a78bfa", textDecoration: "none" }}>{m.cB?.sym}</a>
                 : <a href={`https://meme.com/coin/${MEME_SLUGS[m.cB?.sym] || (m.cB?.sym || "").toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorB, textDecoration: "none" }}>${m.cB?.sym}</a>}
             </div>
-            <div style={{
-              display: "inline-block", padding: "1px 8px", borderRadius: 6, marginTop: 4,
+            <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
+              display: "inline-block", padding: "1px 8px", borderRadius: 6, marginTop: 4, cursor: "default",
               background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
               border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
               animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -2666,8 +2552,8 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
             }}>{pm.title}</div>
           </div>
           {!isResolved && (
-            <div style={{
-              padding: "2px 8px", borderRadius: 8, flexShrink: 0,
+            <div className="tip" data-tip={new Date(pmExpiry).toLocaleString()} style={{
+              padding: "2px 8px", borderRadius: 8, flexShrink: 0, cursor: "default",
               background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
               border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
               animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -3421,7 +3307,7 @@ function App() {
     }
   }, []);
 
-  // Load inventory from census data
+  // Load inventory from census data, resolve CoinGecko ticker symbols
   const loadInventory = useCallback(async (uid) => {
     if (!supabase || !uid) return;
     try {
@@ -3431,6 +3317,21 @@ function App() {
         .eq("user_id", uid)
         .order("usd_value", { ascending: false });
       if (error) { console.warn("Inventory load failed:", error.message); return; }
+      if (!data?.length) { setHoldings(data || []); return; }
+      // Resolve CoinGecko ticker symbols (coin_symbol is the CG ID / slug)
+      try {
+        const cgIds = data.map(h => h.coin_symbol.toLowerCase()).join(",");
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${cgIds}`);
+        if (res.ok) {
+          const cgData = await res.json();
+          const tickerMap = {};
+          for (const c of cgData) tickerMap[c.id] = c.symbol.toUpperCase();
+          for (const h of data) {
+            const ticker = tickerMap[h.coin_symbol.toLowerCase()];
+            if (ticker) h.coin_ticker = ticker;
+          }
+        }
+      } catch (e) { console.warn("CoinGecko ticker lookup failed:", e); }
       setHoldings(data || []);
     } catch (e) { console.warn("Inventory load error:", e); }
   }, []);
@@ -3439,35 +3340,11 @@ function App() {
   const prepopulateHoldings = useCallback(async (uid, memeUserId, authToken) => {
     if (!supabase || !uid || !memeUserId || !authToken) return;
     try {
-      // Check if user already has holdings
       const { data: existing } = await supabase.from("labs_user_holdings")
         .select("user_id").eq("user_id", uid).limit(1);
       if (existing && existing.length > 0) return;
-      // Fetch from meme.com API
-      const res = await fetch(`${MEME_API}/farm/get_user_coins?meme_user_id=${memeUserId}`, {
-        headers: { "Authorization": `Bearer ${authToken}` }
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const coins = data.coin_balances || [];
-      if (!coins.length) return;
-      // Map LEVEL_1→BRONZE, LEVEL_2→SILVER, LEVEL_3→GOLD
-      const levelToTier = { LEVEL_1: "BRONZE", LEVEL_2: "SILVER", LEVEL_3: "GOLD" };
-      const holdings = coins
-        .filter(c => c.user_coin_balance_level && levelToTier[c.user_coin_balance_level])
-        .map(c => ({
-          coin_symbol: (c.coin_key || "").toUpperCase(),
-          coin_name: c.coin_name || c.coin_key || "",
-          coin_image: c.coin_image_url || "",
-          wallet_address: "",
-          chain: "",
-          token_balance: 0,
-          usd_value: 0,
-          tier: levelToTier[c.user_coin_balance_level]
-        }));
-      if (!holdings.length) return;
-      await supabase.rpc("labs_save_census", { p_user_id: uid, p_holdings: holdings });
-      console.log(`[PREPOPULATE] Seeded ${holdings.length} holdings from meme.com API`);
+      await runHoldingsScan(uid, memeUserId, authToken);
+      console.log("[PREPOPULATE] Seeded holdings from meme.com API");
     } catch (e) { console.warn("Holdings prepopulate failed:", e.message); }
   }, []);
 
@@ -3583,7 +3460,8 @@ function App() {
 
       // Prepopulate holdings from meme.com API if user has none
       if (currentUser && auth?.token) {
-        prepopulateHoldings(userId.current, currentUser.id, auth.token);
+        await prepopulateHoldings(userId.current, currentUser.id, auth.token);
+        loadInventory(userId.current);
       }
 
       // Load leaderboard and history
@@ -4041,7 +3919,22 @@ function App() {
         }
         maxUpdownRound.current = Math.max(maxUpdownRound.current, round);
       }
-      // Battle markets are only created via auto-renew when the previous battle resolves
+      // Battle auto-creation: if no OPEN battle exists, create one
+      const hasOpenBattle = dbMarkets.some(db => db.status === "OPEN" && db.market_type === "BATTLE");
+      if (!hasOpenBattle && Object.keys(battleCoinMap).length >= 2) {
+        const matchup = pickBattleMatchup(battleCoinMap);
+        if (matchup) {
+          const allBattleRounds = dbMarkets.filter(db => db.market_type === "BATTLE")
+            .map(db => { const parts = db.id.split("-"); return parseInt(parts[parts.length - 1]) || 0; });
+          const nextRound = Math.max(0, ...allBattleRounds) + 1;
+          const [symA, symB] = matchup;
+          const newM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], nextRound);
+          syncMarketToDb(newM);
+          supabase.rpc('labs_insert_snapshot', {
+            p_market_id: newM.id, p_score_a: newM.mc, p_score_b: newM.mcB
+          });
+        }
+      }
     };
     const refreshAll = async () => {
       await refreshMarkets();
@@ -4425,6 +4318,7 @@ function App() {
       zoom: isMobile ? undefined : "150%"
     }}>
       <link href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@400;900&family=Jersey+25&family=Mulish:wght@400;700&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } } @keyframes timerPulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } } @keyframes priceFlash { 0% { opacity:1; transform:scale(1.2); } 30% { opacity:1; transform:scale(1); } 100% { opacity:1; transform:scale(1); } } @keyframes chestShake { 0%,100% { transform:translateX(0) rotateZ(0deg); } 4% { transform:translateX(-6px) rotateZ(-8deg); } 8% { transform:translateX(6px) rotateZ(6deg); } 12% { transform:translateX(-4px) rotateZ(-6deg); } 16% { transform:translateX(4px) rotateZ(4deg); } 20% { transform:translateX(-2px) rotateZ(-3deg); } 24% { transform:translateX(0) rotateZ(0deg); } } @keyframes spin { to { transform:rotate(360deg); } } @keyframes rewardPop { from { opacity:0; transform:scale(0.5); } to { opacity:1; transform:scale(1); } } @keyframes claimPop { 0% { transform:scale(0.6); opacity:0; } 50% { transform:scale(1.15); } 100% { transform:scale(1); opacity:1; } } @keyframes claimGlow { 0% { box-shadow:0 0 12px rgba(34,197,94,0.8), inset 0 1px 0 rgba(255,255,255,0.3); } 50% { box-shadow:0 0 24px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.2); } 100% { box-shadow:0 0 0px transparent; } } @keyframes chestSelectedPulse { 0%,100% { transform:scale(1.08); filter:drop-shadow(0 0 12px rgba(247,147,26,0.5)); } 50% { transform:scale(1.14); filter:drop-shadow(0 0 20px rgba(247,147,26,0.7)); } } .tip{position:relative;} .tip:hover::after{content:attr(data-tip);position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:6px;padding:5px 10px;border-radius:8px;background:#1a1f2a;color:#e0e0e0;font-size:13px;font-family:'Jersey 25',sans-serif;white-space:nowrap;z-index:999;pointer-events:none;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 12px rgba(0,0,0,0.4);}`}</style>
 
       {notification && (
         <div style={{
@@ -4435,7 +4329,7 @@ function App() {
           display:"flex", alignItems:"center", gap:12,
           animation:"slideDown 0.3s ease-out"
         }}>
-          <style>{`@keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } } @keyframes timerPulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } } @keyframes priceFlash { 0% { opacity:1; transform:scale(1.2); } 30% { opacity:1; transform:scale(1); } 100% { opacity:1; transform:scale(1); } } @keyframes chestShake { 0%,100% { transform:translateX(0) rotateZ(0deg); } 4% { transform:translateX(-6px) rotateZ(-8deg); } 8% { transform:translateX(6px) rotateZ(6deg); } 12% { transform:translateX(-4px) rotateZ(-6deg); } 16% { transform:translateX(4px) rotateZ(4deg); } 20% { transform:translateX(-2px) rotateZ(-3deg); } 24% { transform:translateX(0) rotateZ(0deg); } } @keyframes spin { to { transform:rotate(360deg); } } @keyframes rewardPop { from { opacity:0; transform:scale(0.5); } to { opacity:1; transform:scale(1); } } @keyframes claimPop { 0% { transform:scale(0.6); opacity:0; } 50% { transform:scale(1.15); } 100% { transform:scale(1); opacity:1; } } @keyframes claimGlow { 0% { box-shadow:0 0 12px rgba(34,197,94,0.8), inset 0 1px 0 rgba(255,255,255,0.3); } 50% { box-shadow:0 0 24px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.2); } 100% { box-shadow:0 0 0px transparent; } } @keyframes chestSelectedPulse { 0%,100% { transform:scale(1.08); filter:drop-shadow(0 0 12px rgba(247,147,26,0.5)); } 50% { transform:scale(1.14); filter:drop-shadow(0 0 20px rgba(247,147,26,0.7)); } }`}</style>
+
           <span style={{ fontSize:"1.5em" }}>{notification.isBattle ? "⚔️" : notification.result === "YES" ? "📈" : "📉"}</span>
           <div>
             <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em" }}>
@@ -4594,6 +4488,24 @@ function App() {
             gap: 16,
             position: "static"
           }}>
+            <TreasureChestCard
+              chestState={memeUser && chestQuest ? chestState : "cooldown"}
+              chestCooldown={memeUser && chestQuest ? chestCooldown : 0}
+              chestReward={chestReward}
+              chestQuest={chestQuest}
+              onClaim={memeUser ? handleChestClaim : () => setShowDeposit(true)}
+              isMobile={isMobile}/>
+
+            {retweetQuest && retweetState !== "loading" && !(retweetState === "completed" && retweetReward === 0) && (
+              <RetweetQuestCard
+                retweetState={memeUser ? retweetState : "completed"}
+                retweetCooldown={retweetCooldown}
+                retweetReward={retweetReward}
+                retweetQuest={retweetQuest}
+                onRetweet={memeUser ? handleRetweet : () => setShowDeposit(true)}
+                isMobile={isMobile}/>
+            )}
+
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
               borderRadius:25, overflow:"hidden"
@@ -4751,24 +4663,6 @@ function App() {
               })()}
             </div>
 
-            <TreasureChestCard
-              chestState={memeUser && chestQuest ? chestState : "cooldown"}
-              chestCooldown={memeUser && chestQuest ? chestCooldown : 0}
-              chestReward={chestReward}
-              chestQuest={chestQuest}
-              onClaim={memeUser ? handleChestClaim : () => setShowDeposit(true)}
-              isMobile={isMobile}/>
-
-            {retweetQuest && retweetState !== "loading" && !(retweetState === "completed" && retweetReward === 0) && (
-              <RetweetQuestCard
-                retweetState={memeUser ? retweetState : "completed"}
-                retweetCooldown={retweetCooldown}
-                retweetReward={retweetReward}
-                retweetQuest={retweetQuest}
-                onRetweet={memeUser ? handleRetweet : () => setShowDeposit(true)}
-                isMobile={isMobile}/>
-            )}
-
             {hist.length > 0 && (
               <div style={{
                 background:"linear-gradient(360deg,#212936,#4e596c)",
@@ -4818,6 +4712,7 @@ function App() {
         const tierColors2 = { gold:"#ffcb15", purple:"#fe6aff", green:"#d4ffed" };
         const inv = (holdings || []).map(h => ({
           sym: h.coin_symbol,
+          ticker: h.coin_ticker || h.coin_name || h.coin_symbol,
           tier: dbTierMap[h.tier] || "green",
           img: h.coin_image,
         }));
@@ -4917,7 +4812,7 @@ function App() {
                 <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>Loading...</div>
               ) : inv.length === 0 ? (
                 <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>
-                  {scanning ? "Scanning wallets..." : memeUser?.wallets?.length > 0 ? "Hit Scan Now to check your holdings" : "Link wallets on meme.com to see holdings"}
+                  {scanning ? "Scanning..." : memeUser ? "Hit Scan Now to check your holdings" : "Log in to see holdings"}
                 </div>
               ) : (
               <div style={{
@@ -4959,12 +4854,13 @@ function App() {
                       <div style={{
                         background:"linear-gradient(180deg, " + tc + "bb, " + tc2 + "88)",
                         padding:"3px 5px",
-                        display:"flex", alignItems:"center", justifyContent:"space-between"
+                        display:"flex", alignItems:"center", justifyContent:"space-between",
+                        marginTop:"auto"
                       }}>
                         <div style={{
                           fontFamily:"'Londrina Solid',sans-serif", fontSize:".55em",
                           color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.6)"
-                        }}>${h.sym}</div>
+                        }}>${h.ticker}</div>
                         <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
                           width:9, height:7, filter:"drop-shadow(0 0 2px rgba(255,255,255,0.3))"
                         }}/>
@@ -4976,7 +4872,7 @@ function App() {
               )}
 
               {/* Claim card with Sir background */}
-              {memeUser?.wallets?.length > 0 && (() => {
+              {memeUser && (() => {
                 const canScan = !scanning && (!lastCensusAt || Date.now() - new Date(lastCensusAt).getTime() >= CENSUS_COOLDOWN_MS);
                 const msLeft = lastCensusAt ? Math.max(0, CENSUS_COOLDOWN_MS - (Date.now() - new Date(lastCensusAt).getTime())) : 0;
                 const onCooldown = !canScan && !scanning && lastCensusAt;
@@ -5011,7 +4907,7 @@ function App() {
                       const doScan = async () => {
                         setScanning(true); setScanError(null);
                         try {
-                          await runWalletCensus(userId.current, memeUser.wallets);
+                          await runHoldingsScan(userId.current, memeUser.id, authToken);
                           setLastCensusAt(new Date().toISOString());
                           await loadInventory(userId.current);
                           // Read fresh diamond_hands multiplier (set by labs_save_census RPC)
