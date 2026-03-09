@@ -1281,18 +1281,18 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                   color:"#ffffff40", marginBottom:2
                 }}>YOUR BET</div>
                 <div style={{
-                  fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
-                  whiteSpace:"nowrap"
+                  fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em", lineHeight:1
                 }}>
-                  <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
+                  <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa", whiteSpace:"nowrap" }}>
                     {grossRf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
-                  </span>
-                  <div style={{
+                  </span>{" "}
+                  <span style={{
                     fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
-                    color: pnl>=0 ? "#4ade80" : "#f65e5e"
+                    color: pnl>=0 ? "#4ade80" : "#f65e5e",
+                    whiteSpace:"nowrap"
                   }}>
                     {pnl>=0 ? "▲" : "▼"} {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
-                  </div>
+                  </span>
                 </div>
               </div>
               <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
@@ -1304,24 +1304,24 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
               color:"#ffffff40", marginBottom:2
             }}>CURRENT PRICE</div>
             <div style={{
-              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
-              whiteSpace:"nowrap"
+              fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em", lineHeight:1
             }}>
               <span style={{
                 ...gld,
                 transition:"transform 0.3s ease, opacity 0.3s ease",
                 transform: priceFlash === "up" ? "scale(1.15)" : "scale(1)",
                 opacity: priceFlash === "down" ? 0.6 : 1,
-                display:"inline-block"
-              }}>{fM(m.mc)}</span>
-              <div style={{
+                display:"inline-block", whiteSpace:"nowrap"
+              }}>{fM(m.mc)}</span>{" "}
+              <span style={{
                 fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
                 color: priceFlash === "up" ? "#4ade80" : priceFlash === "down" ? "#f65e5e" : isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40",
                 transition:"color 0.3s ease",
-                animation: priceFlash ? "priceFlash 1.2s ease-out" : undefined
+                animation: priceFlash ? "priceFlash 1.2s ease-out" : undefined,
+                whiteSpace:"nowrap"
               }}>
                 {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {Math.abs(pctChange).toFixed(1)}%
-              </div>
+              </span>
             </div>
           </div>
           <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
@@ -3330,6 +3330,12 @@ function App() {
           }
         }
       } catch (e) { console.warn("CoinGecko ticker lookup failed:", e); }
+      // Fallback: if coin_symbol is already a short ticker (no hyphens), use it directly
+      for (const h of data) {
+        if (!h.coin_ticker && h.coin_symbol && !h.coin_symbol.includes("-") && h.coin_symbol.length <= 10) {
+          h.coin_ticker = h.coin_symbol.toUpperCase();
+        }
+      }
       setHoldings(data || []);
     } catch (e) { console.warn("Inventory load error:", e); }
   }, []);
@@ -4494,6 +4500,192 @@ function App() {
               onClaim={memeUser ? handleChestClaim : () => setShowDeposit(true)}
               isMobile={isMobile}/>
 
+            {/* Sidebar inventory + claim card */}
+            {holdings && holdings.length > 0 && (() => {
+              const dbTierMap = { GOLD:"gold", SILVER:"purple", BRONZE:"green" };
+              const tierColors = { gold:"#ff7900", purple:"#e900d7", green:"#69b69b" };
+              const tierColors2 = { gold:"#ffcb15", purple:"#fe6aff", green:"#d4ffed" };
+              const tierOrder = { gold:0, purple:1, green:2 };
+              const inv = holdings.map(h => ({
+                sym: h.coin_symbol,
+                ticker: h.coin_ticker || h.coin_name || h.coin_symbol,
+                tier: dbTierMap[h.tier] || "green",
+                img: h.coin_image,
+              })).sort((a, b) => (tierOrder[a.tier] ?? 3) - (tierOrder[b.tier] ?? 3));
+              const canScan = !scanning && (!lastCensusAt || Date.now() - new Date(lastCensusAt).getTime() >= CENSUS_COOLDOWN_MS);
+              const msLeft = lastCensusAt ? Math.max(0, CENSUS_COOLDOWN_MS - (Date.now() - new Date(lastCensusAt).getTime())) : 0;
+              const onCooldown = !canScan && !scanning && lastCensusAt;
+              const d = Math.floor(msLeft / (24*60*60*1000));
+              const h = Math.floor((msLeft % (24*60*60*1000)) / (60*60*1000));
+              const m = Math.floor((msLeft % (60*60*1000)) / (60*1000));
+              void claimTick;
+              const pct = onCooldown ? Math.min(100, Math.max(0, ((Date.now() - new Date(lastCensusAt).getTime()) / CENSUS_COOLDOWN_MS) * 100)) : 100;
+              const doScan = async () => {
+                setScanning(true); setScanError(null);
+                try {
+                  await runHoldingsScan(userId.current, memeUser.id, authToken);
+                  setLastCensusAt(new Date().toISOString());
+                  await loadInventory(userId.current);
+                  const { data: freshUser } = await supabase.from("labs_users").select("diamond_hands").eq("id", userId.current).single();
+                  const freshDh = freshUser?.diamond_hands || 0;
+                  setDiamondHands(freshDh);
+                  const { data: freshHoldings } = await supabase.from("labs_user_inventory").select("tier").eq("user_id", userId.current);
+                  const reward = calcHoldingsReward(freshHoldings, freshDh);
+                  if (reward > 0) {
+                    await supabase.rpc('labs_claim_holdings_reward', { p_user_id: userId.current, p_reward: reward });
+                    setBal(b => b + reward);
+                    setClaimReward(reward);
+                    setTimeout(() => setClaimReward(0), 1800);
+                  }
+                } catch (e) { setScanError(e.message); }
+                setScanning(false);
+              };
+              return (
+                <div style={{
+                  background:"linear-gradient(360deg,#212936,#4e596c)",
+                  boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
+                  borderRadius:"16px 16px 25px 25px", padding:"5px 6px 10px"
+                }}>
+                  <div style={{
+                    background:"#191f29",
+                    borderRadius:14, padding:"14px 18px",
+                    display:"flex", flexDirection:"column",
+                    position:"relative", overflow:"hidden"
+                  }}>
+                    {/* Dark overlay */}
+                    <div style={{
+                      position:"absolute", inset:0,
+                      background:"linear-gradient(180deg, rgba(15,20,30,0.88) 0%, rgba(15,20,30,0.78) 60%, rgba(0,0,0,0.55) 100%)",
+                      pointerEvents:"none"
+                    }}/>
+                    <div style={{ position:"relative", zIndex:1 }}>
+                      {/* Header */}
+                      <div style={{
+                        fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
+                        textTransform:"uppercase", marginBottom:14,
+                        textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
+                        lineHeight:1.2, display:"flex", alignItems:"center", gap:10
+                      }}>
+                        <span><span style={gld}>Memecoin</span> Inventory</span>
+                        {diamondHands > 0 && (
+                          <span style={{
+                            position:"relative", overflow:"hidden",
+                            fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
+                            background:"linear-gradient(135deg, rgba(185,242,255,0.12) 0%, rgba(100,180,220,0.08) 50%, rgba(185,242,255,0.12) 100%)",
+                            color:"#e0f7ff", padding:"3px 12px", borderRadius:8,
+                            fontWeight:700, letterSpacing:".06em",
+                            border:"1px solid rgba(185,242,255,0.25)",
+                            textShadow:"0 0 8px rgba(185,242,255,0.5)",
+                            boxShadow:"0 0 12px rgba(185,242,255,0.15), 0 0 30px rgba(185,242,255,0.08), inset 0 1px 0 rgba(255,255,255,0.1)",
+                            animation:"diamondPulse 3s ease-in-out infinite"
+                          }}>
+                            <span style={{ position:"relative", zIndex:1 }}>{"\u{1F48E}"} {diamondHands}X</span>
+                            <span style={{
+                              position:"absolute", top:0, left:"-100%", width:"100%", height:"100%",
+                              background:"linear-gradient(90deg, transparent 0%, rgba(185,242,255,0.15) 50%, transparent 100%)",
+                              borderRadius:8, animation:"diamondShimmer 4s ease-in-out infinite"
+                            }}/>
+                          </span>
+                        )}
+                      </div>
+                      {/* Coin grid — max 3 rows, coins shrink to fit */}
+                      <div style={{
+                        display:"grid",
+                        gridTemplateColumns:`repeat(${Math.max(4, Math.ceil(inv.length / 3))}, 1fr)`,
+                        gap:6
+                      }}>
+                        {inv.map((c, i) => {
+                          const tc = tierColors[c.tier];
+                          const tc2 = tierColors2[c.tier];
+                          return (
+                            <div key={i} style={{
+                              background:"linear-gradient(180deg, #1a1a24 0%, #12121a 100%)",
+                              border:"1.5px solid " + tc + "55", borderRadius:8,
+                              overflow:"hidden", display:"flex", flexDirection:"column",
+                              boxShadow:"0 0 8px " + tc + "20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)"
+                            }}>
+                              <div style={{
+                                width:"100%", aspectRatio:"1", position:"relative",
+                                background:"linear-gradient(180deg, " + tc + "0d, transparent)",
+                                display:"flex", alignItems:"center", justifyContent:"center",
+                                overflow:"hidden"
+                              }}>
+                                {c.img ? <img src={c.img} alt={c.sym}
+                                  style={{ width:"100%", height:"100%", objectFit:"cover" }}
+                                  onError={e => { e.target.style.display="none"; }}
+                                /> : <div style={{
+                                  fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
+                                  color:tc, opacity:.5
+                                }}>{c.sym[0]}</div>}
+                              </div>
+                              <div style={{
+                                background:"linear-gradient(180deg, " + tc + "bb, " + tc2 + "88)",
+                                padding:"3px 5px",
+                                display:"flex", alignItems:"center", justifyContent:"space-between",
+                                marginTop:"auto"
+                              }}>
+                                <div style={{
+                                  fontFamily:"'Londrina Solid',sans-serif", fontSize:".55em",
+                                  color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.6)"
+                                }}>${c.ticker}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Claim / timer bar */}
+                      {memeUser && (
+                        <div style={{
+                          marginTop:14, display:"flex", alignItems:"stretch",
+                          gap:0, width:"100%", height:32, borderRadius:8, overflow:"hidden"
+                        }}>
+                          <div style={{
+                            flex:1, position:"relative",
+                            background:"rgba(0,0,0,0.45)",
+                            boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"
+                          }}>
+                            <div style={{
+                              position:"absolute", top:0, left:0, height:"100%",
+                              width: pct + "%",
+                              background:"linear-gradient(90deg, #71BAFF, #5a9fdf)",
+                              boxShadow:"0 0 8px rgba(113,186,255,0.3)",
+                              transition: pct < 100 ? "width 0.3s ease-out" : "none",
+                              overflow:"hidden"
+                            }}/>
+                          </div>
+                          <div onClick={canScan && !claimReward ? doScan : undefined} style={{
+                            fontFamily:"'Jersey 25',sans-serif",
+                            fontSize: claimReward > 0 ? ".95em" : ".75em",
+                            whiteSpace:"nowrap",
+                            color: (claimReward > 0 || canScan) ? "#fff" : "#ffffffaa",
+                            background: claimReward > 0
+                              ? "linear-gradient(180deg, #22c55e 0%, #16a34a 100%)"
+                              : canScan
+                                ? "linear-gradient(180deg, #ffcb15 0%, #f7931a 100%)"
+                                : "linear-gradient(180deg, #f7931a99 0%, #cc750e99 100%)",
+                            padding:"0 24px",
+                            cursor: canScan && !claimReward ? "pointer" : "default",
+                            fontWeight:700, letterSpacing:".06em", textTransform:"uppercase",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            width:"33%", flexShrink:0,
+                            boxShadow: claimReward > 0 ? "0 0 16px rgba(34,197,94,0.6)" : canScan ? "inset 0 1px 0 rgba(255,255,255,0.25)" : "none",
+                            textShadow: "0 1px 4px rgba(0,0,0,0.4)",
+                            animation: claimReward > 0 ? "claimPop .35s ease-out, claimGlow 1.8s ease-out" : "none",
+                            transition:"background .3s, color .3s, font-size .3s"
+                          }}
+                          onMouseEnter={canScan && !claimReward ? e => { e.currentTarget.style.filter="brightness(1.1)"; } : undefined}
+                          onMouseLeave={canScan && !claimReward ? e => { e.currentTarget.style.filter=""; } : undefined}
+                          >
+                            {scanning ? "SCANNING..." : claimReward > 0 ? `+${claimReward.toLocaleString()}` : canScan ? (() => { const r = calcHoldingsReward(holdings, diamondHands); return r > 0 ? `CLAIM ${r.toLocaleString()}` : "CLAIM"; })() : `${d}d ${h}h ${m}m`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {retweetQuest && retweetState !== "loading" && !(retweetState === "completed" && retweetReward === 0) && (
               <RetweetQuestCard
                 retweetState={memeUser ? retweetState : "completed"}
@@ -4708,12 +4900,13 @@ function App() {
         const dbTierMap = { GOLD:"gold", SILVER:"purple", BRONZE:"green" };
         const tierColors = { gold:"#ff7900", purple:"#e900d7", green:"#69b69b" };
         const tierColors2 = { gold:"#ffcb15", purple:"#fe6aff", green:"#d4ffed" };
+        const tierOrder = { gold:0, purple:1, green:2 };
         const inv = (holdings || []).map(h => ({
           sym: h.coin_symbol,
           ticker: h.coin_ticker || h.coin_name || h.coin_symbol,
           tier: dbTierMap[h.tier] || "green",
           img: h.coin_image,
-        }));
+        })).sort((a, b) => (tierOrder[a.tier] ?? 3) - (tierOrder[b.tier] ?? 3));
         return (<>
           <div onClick={() => setShowProfile(false)} style={{
             position:"fixed", inset:0, zIndex:50,
@@ -4772,135 +4965,136 @@ function App() {
               onMouseLeave={e => { e.currentTarget.style.background="rgba(255,255,255,0.03)"; e.currentTarget.style.color="#ffffff30"; }}
               >✕</span>
             </div>
-            <div style={{ padding:"20px 40px" }}>
+            <div style={{ padding:"20px 24px" }}>
+              {/* Combined inventory + claim card */}
               <div style={{
-                fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
-                color:"#ffe4a0", marginBottom:18, marginLeft:16,
-                letterSpacing:".08em", display:"flex", alignItems:"center", justifyContent:"space-between"
+                background:"linear-gradient(360deg,#212936,#4e596c)",
+                boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
+                borderRadius:20, padding:0, overflow:"hidden"
               }}>
-                <span style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  MEME INVENTORY
-                  {diamondHands > 0 && (
-                    <span style={{
-                      position:"relative", overflow:"hidden",
-                      fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
-                      background:"linear-gradient(135deg, rgba(185,242,255,0.12) 0%, rgba(100,180,220,0.08) 50%, rgba(185,242,255,0.12) 100%)",
-                      color:"#e0f7ff", padding:"3px 12px", borderRadius:8,
-                      fontWeight:700, letterSpacing:".06em",
-                      border:"1px solid rgba(185,242,255,0.25)",
-                      textShadow:"0 0 8px rgba(185,242,255,0.5)",
-                      boxShadow:"0 0 12px rgba(185,242,255,0.15), 0 0 30px rgba(185,242,255,0.08), inset 0 1px 0 rgba(255,255,255,0.1)",
-                      animation:"diamondPulse 3s ease-in-out infinite"
-                    }}>
-                      <span style={{ position:"relative", zIndex:1 }}>{"\u{1F48E}"} {diamondHands}X</span>
-                      <span style={{
-                        position:"absolute", top:0, left:"-100%", width:"100%", height:"100%",
-                        background:"linear-gradient(90deg, transparent 0%, rgba(185,242,255,0.15) 50%, transparent 100%)",
-                        borderRadius:8, animation:"diamondShimmer 4s ease-in-out infinite"
-                      }}/>
-                    </span>
-                  )}
-                </span>
-              </div>
-              {scanError && <div style={{
-                fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#f65e5e",
-                marginBottom:10, textAlign:"center"
-              }}>Scan failed: {scanError}</div>}
-              {holdings === null ? (
-                <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>Loading...</div>
-              ) : inv.length === 0 ? (
-                <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>
-                  {scanning ? "Scanning..." : memeUser ? "Hit Scan Now to check your holdings" : "Log in to see holdings"}
-                </div>
-              ) : (
-              <div style={{
-                display:"grid",
-                gridTemplateColumns:"repeat(auto-fill, minmax(60px, 1fr))",
-                gap:8,
-                marginLeft:16
-              }}>
-                {inv.map((h, i) => {
-                  const tc = tierColors[h.tier];
-                  const tc2 = tierColors2[h.tier];
-                  return (
-                    <div key={i} style={{
-                      background:"linear-gradient(180deg, #1a1a24 0%, #12121a 100%)",
-                      border:"1.5px solid " + tc + "55",
-                      borderRadius:8,
-                      overflow:"hidden",
-                      display:"flex", flexDirection:"column",
-                      boxShadow:"0 0 8px " + tc + "20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
-                      cursor:"pointer", transition:"transform .2s, box-shadow .2s, border-color .2s"
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px) scale(1.04)"; e.currentTarget.style.boxShadow="0 0 16px "+tc+"40, 0 4px 12px rgba(0,0,0,0.5)"; e.currentTarget.style.borderColor=tc+"88"; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 0 8px "+tc+"20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor=tc+"55"; }}
-                    >
-                      <div style={{
-                        width:"100%", aspectRatio:"1", position:"relative",
-                        background:"linear-gradient(180deg, " + tc + "0d, transparent)",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        overflow:"hidden"
-                      }}>
-                        {h.img ? <img src={h.img} alt={h.sym}
-                          style={{ width:"100%", height:"100%", objectFit:"cover" }}
-                          onError={e => { e.target.style.display="none"; }}
-                        /> : <div style={{
-                          fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
-                          color:tc, opacity:.5
-                        }}>{h.sym[0]}</div>}
-                      </div>
-                      <div style={{
-                        background:"linear-gradient(180deg, " + tc + "bb, " + tc2 + "88)",
-                        padding:"3px 5px",
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        marginTop:"auto"
-                      }}>
-                        <div style={{
-                          fontFamily:"'Londrina Solid',sans-serif", fontSize:".55em",
-                          color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.6)"
-                        }}>${h.ticker}</div>
-                        <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
-                          width:9, height:7, filter:"drop-shadow(0 0 2px rgba(255,255,255,0.3))"
-                        }}/>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              )}
-
-              {/* Claim card with Sir background */}
-              {memeUser && (() => {
-                const canScan = !scanning && (!lastCensusAt || Date.now() - new Date(lastCensusAt).getTime() >= CENSUS_COOLDOWN_MS);
-                const msLeft = lastCensusAt ? Math.max(0, CENSUS_COOLDOWN_MS - (Date.now() - new Date(lastCensusAt).getTime())) : 0;
-                const onCooldown = !canScan && !scanning && lastCensusAt;
-                const d = Math.floor(msLeft / (24*60*60*1000));
-                const h = Math.floor((msLeft % (24*60*60*1000)) / (60*60*1000));
-                const m = Math.floor((msLeft % (60*60*1000)) / (60*1000));
-                const s = Math.floor((msLeft % (60*1000)) / 1000);
-                void claimTick; // trigger re-render
-                return (
+                <div style={{
+                  backgroundImage:"url(/experiments/memecoin-arena/inventory-bg.png)",
+                  backgroundSize:"110%", backgroundPosition:"center center",
+                  padding:"14px 18px",
+                  display:"flex", flexDirection:"column",
+                  position:"relative"
+                }}>
+                  {/* Dark overlay */}
                   <div style={{
-                    marginTop:18, borderRadius:14, overflow:"hidden", position:"relative",
-                    height:140, backgroundImage:"url(https://meme.com/assets/images/farm/user-points-bg-v1.webp)",
-                    backgroundSize:"cover", backgroundPosition:"center 29%",
-                    display:"flex", flexDirection:"column", justifyContent:"flex-end",
-                    padding:16, gap:10
-                  }}>
-                    {/* Dark overlay for readability */}
+                    position:"absolute", inset:0, borderRadius:14,
+                    background:"linear-gradient(180deg, rgba(15,20,30,0.88) 0%, rgba(15,20,30,0.78) 60%, rgba(0,0,0,0.55) 100%)",
+                    pointerEvents:"none"
+                  }}/>
+
+                  {/* Content */}
+                  <div style={{ position:"relative", zIndex:1 }}>
+                    {/* Header */}
                     <div style={{
-                      position:"absolute", inset:0,
-                      background:"linear-gradient(90deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.4) 100%)"
-                    }}/>
-                    {/* Title */}
+                      fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
+                      textTransform:"uppercase", marginBottom:14,
+                      textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
+                      lineHeight:1.2, display:"flex", alignItems:"center", gap:10
+                    }}>
+                      <span><span style={gld}>Memecoin</span> Inventory</span>
+                      {diamondHands > 0 && (
+                        <span style={{
+                          position:"relative", overflow:"hidden",
+                          fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
+                          background:"linear-gradient(135deg, rgba(185,242,255,0.12) 0%, rgba(100,180,220,0.08) 50%, rgba(185,242,255,0.12) 100%)",
+                          color:"#e0f7ff", padding:"3px 12px", borderRadius:8,
+                          fontWeight:700, letterSpacing:".06em",
+                          border:"1px solid rgba(185,242,255,0.25)",
+                          textShadow:"0 0 8px rgba(185,242,255,0.5)",
+                          boxShadow:"0 0 12px rgba(185,242,255,0.15), 0 0 30px rgba(185,242,255,0.08), inset 0 1px 0 rgba(255,255,255,0.1)",
+                          animation:"diamondPulse 3s ease-in-out infinite"
+                        }}>
+                          <span style={{ position:"relative", zIndex:1 }}>{"\u{1F48E}"} {diamondHands}X</span>
+                          <span style={{
+                            position:"absolute", top:0, left:"-100%", width:"100%", height:"100%",
+                            background:"linear-gradient(90deg, transparent 0%, rgba(185,242,255,0.15) 50%, transparent 100%)",
+                            borderRadius:8, animation:"diamondShimmer 4s ease-in-out infinite"
+                          }}/>
+                        </span>
+                      )}
+                    </div>
+
+                    {scanError && <div style={{
+                      fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#f65e5e",
+                      marginBottom:10, textAlign:"center"
+                    }}>Scan failed: {scanError}</div>}
+
+                    {holdings === null ? (
+                      <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>Loading...</div>
+                    ) : inv.length === 0 ? (
+                      <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>
+                        {scanning ? "Scanning..." : memeUser ? "Hit Claim to check your holdings" : "Log in to see holdings"}
+                      </div>
+                    ) : (
                     <div style={{
-                      position:"relative", zIndex:1,
-                      fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
-                      color:"#ffe4a0", textShadow:"0 2px 8px rgba(0,0,0,0.6)",
-                      textTransform:"uppercase"
-                    }}>Claimable points</div>
-                    {/* Bottom row: progress bar + claim/timer button */}
-                    {(() => {
+                      display:"grid",
+                      gridTemplateColumns:"repeat(auto-fill, minmax(60px, 1fr))",
+                      gap:8
+                    }}>
+                      {inv.map((h, i) => {
+                        const tc = tierColors[h.tier];
+                        const tc2 = tierColors2[h.tier];
+                        return (
+                          <div key={i} style={{
+                            background:"linear-gradient(180deg, #1a1a24 0%, #12121a 100%)",
+                            border:"1.5px solid " + tc + "55",
+                            borderRadius:8,
+                            overflow:"hidden",
+                            display:"flex", flexDirection:"column",
+                            boxShadow:"0 0 8px " + tc + "20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
+                            cursor:"pointer", transition:"transform .2s, box-shadow .2s, border-color .2s"
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px) scale(1.04)"; e.currentTarget.style.boxShadow="0 0 16px "+tc+"40, 0 4px 12px rgba(0,0,0,0.5)"; e.currentTarget.style.borderColor=tc+"88"; }}
+                          onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 0 8px "+tc+"20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor=tc+"55"; }}
+                          >
+                            <div style={{
+                              width:"100%", aspectRatio:"1", position:"relative",
+                              background:"linear-gradient(180deg, " + tc + "0d, transparent)",
+                              display:"flex", alignItems:"center", justifyContent:"center",
+                              overflow:"hidden"
+                            }}>
+                              {h.img ? <img src={h.img} alt={h.sym}
+                                style={{ width:"100%", height:"100%", objectFit:"cover" }}
+                                onError={e => { e.target.style.display="none"; }}
+                              /> : <div style={{
+                                fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
+                                color:tc, opacity:.5
+                              }}>{h.sym[0]}</div>}
+                            </div>
+                            <div style={{
+                              background:"linear-gradient(180deg, " + tc + "bb, " + tc2 + "88)",
+                              padding:"3px 5px",
+                              display:"flex", alignItems:"center", justifyContent:"space-between",
+                              marginTop:"auto"
+                            }}>
+                              <div style={{
+                                fontFamily:"'Londrina Solid',sans-serif", fontSize:".55em",
+                                color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.6)"
+                              }}>${h.ticker}</div>
+                              <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
+                                width:9, height:7, filter:"drop-shadow(0 0 2px rgba(255,255,255,0.3))"
+                              }}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    )}
+
+                    {/* Claim / timer section */}
+                    {memeUser && (() => {
+                      const canScan = !scanning && (!lastCensusAt || Date.now() - new Date(lastCensusAt).getTime() >= CENSUS_COOLDOWN_MS);
+                      const msLeft = lastCensusAt ? Math.max(0, CENSUS_COOLDOWN_MS - (Date.now() - new Date(lastCensusAt).getTime())) : 0;
+                      const onCooldown = !canScan && !scanning && lastCensusAt;
+                      const d = Math.floor(msLeft / (24*60*60*1000));
+                      const h = Math.floor((msLeft % (24*60*60*1000)) / (60*60*1000));
+                      const m = Math.floor((msLeft % (60*60*1000)) / (60*1000));
+                      const s = Math.floor((msLeft % (60*1000)) / 1000);
+                      void claimTick;
                       const pct = onCooldown ? Math.min(100, Math.max(0, ((Date.now() - new Date(lastCensusAt).getTime()) / CENSUS_COOLDOWN_MS) * 100)) : 100;
                       const doScan = async () => {
                         setScanning(true); setScanError(null);
@@ -4908,11 +5102,9 @@ function App() {
                           await runHoldingsScan(userId.current, memeUser.id, authToken);
                           setLastCensusAt(new Date().toISOString());
                           await loadInventory(userId.current);
-                          // Read fresh diamond_hands multiplier (set by labs_save_census RPC)
                           const { data: freshUser } = await supabase.from("labs_users").select("diamond_hands").eq("id", userId.current).single();
                           const freshDh = freshUser?.diamond_hands || 0;
                           setDiamondHands(freshDh);
-                          // Credit holdings-based reward
                           const { data: freshHoldings } = await supabase.from("labs_user_inventory").select("tier").eq("user_id", userId.current);
                           const reward = calcHoldingsReward(freshHoldings, freshDh);
                           if (reward > 0) {
@@ -4929,10 +5121,10 @@ function App() {
                       };
                       return (
                         <div style={{
-                          position:"relative", zIndex:1, display:"flex", alignItems:"stretch",
-                          gap:0, width:"100%", height:40, borderRadius:10, overflow:"hidden"
+                          marginTop:14, display:"flex", alignItems:"stretch",
+                          gap:0, width:"100%", height:32, borderRadius:8, overflow:"hidden"
                         }}>
-                          {/* Progress bar (fills remaining space) */}
+                          {/* Progress bar */}
                           <div style={{
                             flex:1, position:"relative",
                             background:"rgba(0,0,0,0.45)",
@@ -4941,27 +5133,17 @@ function App() {
                             <div style={{
                               position:"absolute", top:0, left:0, height:"100%",
                               width: pct + "%",
-                              background:"linear-gradient(90deg, #c0dca1, #a8d080)",
-                              boxShadow:"0 0 8px rgba(192,220,161,0.3)",
-                              transition:"width 4s cubic-bezier(0.5, 0, 0.2, 1)",
+                              background:"linear-gradient(90deg, #71BAFF, #5a9fdf)",
+                              boxShadow:"0 0 8px rgba(113,186,255,0.3)",
+                              transition: pct < 100 ? "width 0.3s ease-out" : "none",
                               overflow:"hidden"
-                            }}>
-                              <div style={{
-                                position:"absolute", top:1, left:4, right:4, height:"35%",
-                                background:"linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%)"
-                              }}/>
-                              <div style={{
-                                position:"absolute", top:0, left:"-60%", width:"50%", height:"100%",
-                                background:"linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)",
-                                animation:"xpShineSweep 3s ease-in-out infinite"
-                              }}/>
-                            </div>
+                            }}/>
                           </div>
                           {/* Claim / timer button */}
                           <div onClick={canScan && !claimReward ? doScan : undefined} style={{
                             fontFamily:"'Jersey 25',sans-serif",
                             fontSize: claimReward > 0 ? "1.2em" : "1em",
-                            color: claimReward > 0 ? "#fff" : canScan ? "#0c1018" : "#0c1018cc",
+                            color: (claimReward > 0 || canScan) ? "#fff" : "#ffffffaa",
                             background: claimReward > 0
                               ? "linear-gradient(180deg, #22c55e 0%, #16a34a 100%)"
                               : canScan
@@ -4971,23 +5153,23 @@ function App() {
                             cursor: canScan && !claimReward ? "pointer" : "default",
                             fontWeight:700, letterSpacing:".06em", textTransform:"uppercase",
                             display:"flex", alignItems:"center", justifyContent:"center",
-                            minWidth:140, flexShrink:0,
+                            width:"33%", flexShrink:0,
                             boxShadow: claimReward > 0 ? "0 0 16px rgba(34,197,94,0.6)" : canScan ? "inset 0 1px 0 rgba(255,255,255,0.25)" : "none",
-                            textShadow: claimReward > 0 ? "0 1px 4px rgba(0,0,0,0.3)" : canScan ? "0 1px 0 rgba(255,255,255,0.2)" : "none",
+                            textShadow: "0 1px 4px rgba(0,0,0,0.4)",
                             animation: claimReward > 0 ? "claimPop .35s ease-out, claimGlow 1.8s ease-out" : "none",
                             transition:"background .3s, color .3s, font-size .3s"
                           }}
                           onMouseEnter={canScan && !claimReward ? e => { e.currentTarget.style.filter="brightness(1.1)"; } : undefined}
                           onMouseLeave={canScan && !claimReward ? e => { e.currentTarget.style.filter=""; } : undefined}
                           >
-                            {scanning ? "SCANNING..." : claimReward > 0 ? `+${claimReward.toLocaleString()}` : canScan ? (() => { const r = calcHoldingsReward(holdings, diamondHands); return r > 0 ? `CLAIM ${r.toLocaleString()}` : "CLAIM"; })() : `${d}d ${h}h ${m}m ${s}s`}
+                            {scanning ? "SCANNING..." : claimReward > 0 ? `+${claimReward.toLocaleString()}` : canScan ? (() => { const r = calcHoldingsReward(holdings, diamondHands); return r > 0 ? `CLAIM ${r.toLocaleString()}` : "CLAIM"; })() : `${d}d ${h}h ${m}m`}
                           </div>
                         </div>
                       );
                     })()}
                   </div>
-                );
-              })()}
+                </div>
+              </div>
             </div>
           </div>
         </>);

@@ -304,3 +304,61 @@ curl -s "https://vnteehkwrygodkljfwyp.supabase.co/rest/v1/labs_markets?select=*"
 - Reward amount from `quest.reward_meme_score` (not from params)
 - Backend verifies actual retweet via Twitter API using user's OAuth token
 - `claim_retweet_reward_points` expects `tweet_id_internal` (snake_case, not camelCase)
+
+## Meme Inventory (Holdings / Diamond Hands)
+
+### Overview
+Users can view their memecoin holdings in a profile modal. Holdings are seeded from the meme.com API and updated via on-chain wallet scans. A "diamond hands" multiplier rewards users for holding the same coins across scans.
+
+### Data Flow
+1. **Prepopulate (first load):** If user has no holdings in DB, fetch from `GET /farm/get_user_coins?meme_user_id=N` (meme.com API). Maps `coin_key` → `coin_symbol`, `coin_name` → display name. Stored with `chain: "API"`, `wallet_address: "meme.com"`.
+2. **Wallet Census (manual scan):** User clicks "CLAIM" / "SCAN" button. `runWalletCensus()` scans linked wallets (EVM via JSON-RPC batch, Solana via `getTokenAccountsByOwner`) against coins in `labs_coins` table. Prices from CoinGecko. Holdings above $10 USD threshold get a tier (GOLD ≥$10K, SILVER ≥$1K, BRONZE ≥$10).
+3. **Display:** `loadInventory()` reads from `labs_user_inventory` view, then fetches CoinGecko `/coins/markets` to resolve actual ticker symbols (`coin_ticker` field on each holding).
+
+### DB Tables
+- **`labs_user_holdings`** — Raw holdings data (user_id, coin_symbol, coin_name, coin_image, wallet_address, chain, token_balance, usd_value, tier, census_at)
+  - CHECK constraint: `chain` must be `EVM`, `SOLANA`, or `API`
+  - CHECK constraint: `tier` must be `GOLD`, `SILVER`, or `BRONZE`
+- **`labs_user_inventory`** — View (read-only, used by `loadInventory`)
+- **`labs_coins`** — Coin config for wallet scanning (symbol, coingecko_id, evm_contract, solana_mint, etc.)
+
+### RPCs
+- **`labs_save_census(p_user_id, p_holdings jsonb)`** — DELETEs all existing holdings, inserts new ones, computes diamond_hands multiplier (1-10x based on overlap ratio with previous holdings), updates `last_census_at`.
+- **`labs_claim_holdings_reward(p_user_id, p_reward)`** — Credits holdings-based reward to user balance.
+
+### Diamond Hands Multiplier
+Computed in `labs_save_census` by comparing old vs new holdings:
+- ≥99% overlap → 10x
+- ≥90% → 7x, ≥80% → 5x, ≥70% → 3x, <70% → 1x
+- First scan (no previous data) → 10x
+- Overlap is weighted: GOLD=10000, SILVER=5000, BRONZE=500
+
+### Holdings Reward
+`calcHoldingsReward(holdingsList, dhBoost)` — sums daily rates per tier (GOLD=10000, SILVER=7000, BRONZE=1500), multiplied by 3 days × (dhBoost/10). Credited on scan.
+
+### Cooldown
+- `CENSUS_COOLDOWN_MS = 3 days` between scans
+- Progress bar shows time remaining
+- Button shows "CLAIM {reward}" when ready, countdown timer when on cooldown
+
+### Known Issues / Fixes Applied
+- **Empty scan wipes holdings (FIXED):** `runWalletCensus` now throws error if scan finds 0 holdings, preventing `labs_save_census` from deleting everything.
+- **Prepopulate failed silently (FIXED):** `chain: ""` violated CHECK constraint. Now uses `chain: "API"`.
+- **Prepopulate was fire-and-forget (FIXED):** Now `await`ed, followed by `loadInventory()`.
+- **Cashtags show slugs instead of tickers (FIXED):** `loadInventory` now resolves CoinGecko ticker symbols via `/coins/markets` API.
+
+### Code Locations (app.jsx)
+- `CENSUS_TIERS`, `HOLDINGS_DAILY_RATES`, `calcHoldingsReward` — ~line 681-698
+- `fetchCoinsWithPrices`, `scanEvmWallet`, `scanSolanaWallet`, `runWalletCensus` — ~line 711-839
+- `loadInventory` — ~line 3427
+- `prepopulateHoldings` — ~line 3441
+- Profile modal + inventory grid — ~line 4820-4980
+- Scan/Claim card — ~line 4984-5095
+
+### Remaining Issues
+- [ ] Holdings not loading for users whose meme.com `coin_key` doesn't match a CoinGecko ID (ticker falls back to `coin_name`)
+- [ ] `labs_coins` table needs more coins added for wallet scanning to work broadly
+- [ ] No error toast shown when prepopulate fails (only console.warn)
+- [ ] Diamond hands multiplier resets to 1x if scan returns fewer coins (e.g., sold some) — may frustrate users
+- [ ] Census cooldown timer doesn't auto-refresh (needs `claimTick` state toggle)
+- [ ] No way to manually refresh holdings without wallet scan (if wallets changed but cooldown active)
