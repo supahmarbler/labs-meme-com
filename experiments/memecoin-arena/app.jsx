@@ -1281,19 +1281,18 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                   color:"#ffffff40", marginBottom:2
                 }}>YOUR BET</div>
                 <div style={{
-                  display:"flex", alignItems:"center", gap:4,
                   fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
                   whiteSpace:"nowrap"
                 }}>
                   <span style={{ color: pos.side==="YES" ? "#71baff" : "#a78bfa" }}>
                     {grossRf.toLocaleString()} {pos.side==="YES" ? "UP" : "DOWN"}
                   </span>
-                  <span style={{
+                  <div style={{
                     fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
                     color: pnl>=0 ? "#4ade80" : "#f65e5e"
                   }}>
                     {pnl>=0 ? "▲" : "▼"} {pnl>=0 ? "+" : ""}{pnl.toLocaleString()}
-                  </span>
+                  </div>
                 </div>
               </div>
               <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
@@ -1305,7 +1304,6 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
               color:"#ffffff40", marginBottom:2
             }}>CURRENT PRICE</div>
             <div style={{
-              display:"flex", alignItems:"center", gap:4,
               fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
               whiteSpace:"nowrap"
             }}>
@@ -1316,14 +1314,14 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                 opacity: priceFlash === "down" ? 0.6 : 1,
                 display:"inline-block"
               }}>{fM(m.mc)}</span>
-              <span style={{
+              <div style={{
                 fontFamily:"'Jersey 25',sans-serif", fontSize:".6em",
                 color: priceFlash === "up" ? "#4ade80" : priceFlash === "down" ? "#f65e5e" : isUp ? "#4ade80" : pctChange < 0 ? "#f65e5e" : "#ffffff40",
                 transition:"color 0.3s ease",
                 animation: priceFlash ? "priceFlash 1.2s ease-out" : undefined
               }}>
                 {isUp ? "▲" : pctChange < 0 ? "▼" : ""} {Math.abs(pctChange).toFixed(1)}%
-              </span>
+              </div>
             </div>
           </div>
           <div style={{ width:1, height:36, background:"#ffffff20", flexShrink:0 }}/>
@@ -2065,13 +2063,13 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
             <CoinImg src={m.c.img} color={colorA} size={92} sym={m.c.sym}/>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start",
               width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 8, marginTop: 10,
-              background: aLeads ? ((m.type === "TRENDS" ? colorA : "#FFD54F") + "0a") : bLeads ? "#f65e5e0a" : "transparent",
-              border: aLeads ? ("1px solid " + (m.type === "TRENDS" ? colorA : "#FFD54F") + "25") : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
+              background: aLeads ? "#FF98000a" : bLeads ? "#f65e5e0a" : "transparent",
+              border: aLeads ? "1px solid #FF980025" : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
             }}>
               <div style={{
                 fontFamily: "'Jersey 25',sans-serif", fontSize: ".5em", marginBottom: 1,
-                color: aLeads ? (m.type === "TRENDS" ? colorA : "#FFD54F") : bLeads ? "#f65e5e" : "#ffffff30"
+                color: aLeads ? "#FF9800" : bLeads ? "#f65e5e" : "#ffffff30"
               }}>{aLeads ? "WINNING" : bLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
               {m.type === "TRENDS" ? (() => {
                 const chg = m.startMc > 0 ? ((curA - m.startMc) / m.startMc * 100) : 0;
@@ -2126,13 +2124,13 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
             <CoinImg src={m.cB?.img} color={colorB} size={92} sym={m.cB?.sym}/>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end",
               width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 8, marginTop: 10,
-              background: bLeads ? (colorB + "0a") : aLeads ? "#f65e5e0a" : "transparent",
-              border: bLeads ? ("1px solid " + colorB + "25") : aLeads ? "1px solid #f65e5e20" : "1px solid transparent",
+              background: bLeads ? "#448AFF0a" : aLeads ? "#f65e5e0a" : "transparent",
+              border: bLeads ? "1px solid #448AFF25" : aLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
             }}>
               <div style={{
                 fontFamily: "'Jersey 25',sans-serif", fontSize: ".5em", marginBottom: 1,
-                color: bLeads ? colorB : aLeads ? "#f65e5e" : "#ffffff30"
+                color: bLeads ? "#448AFF" : aLeads ? "#f65e5e" : "#ffffff30"
               }}>{bLeads ? "WINNING" : aLeads ? "LOSING" : tied ? "TIED" : ""}&nbsp;</div>
               {m.type === "TRENDS" ? (() => {
                 const chg = m.startMcB > 0 ? ((curB - m.startMcB) / m.startMcB * 100) : 0;
