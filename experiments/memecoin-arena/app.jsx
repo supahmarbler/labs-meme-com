@@ -2092,13 +2092,18 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
               textTransform: "uppercase", lineHeight: 1.2,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8
             }}>
-              {m.type === "TRENDS"
-                ? <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.sym)}&date=now+${m.ca ? Math.round((m.ea - m.ca) / 86400000) : 7}-d`} target="_blank" rel="noopener noreferrer" style={{ color: "#64B5F6", textDecoration: "none" }}>{m.c.sym}</a>
-                : <a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorA, textDecoration: "none" }}>${m.c.sym}</a>}
-              <span style={{ fontSize: ".85em", color: "#ffffff" }}>VS</span>
-              {m.type === "TRENDS"
-                ? <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermB || m.cB?.sym)}&date=now+${m.ca ? Math.round((m.ea - m.ca) / 86400000) : 7}-d`} target="_blank" rel="noopener noreferrer" style={{ color: "#a78bfa", textDecoration: "none" }}>{m.cB?.sym}</a>
-                : <a href={`https://meme.com/coin/${MEME_SLUGS[m.cB?.sym] || (m.cB?.sym || "").toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorB, textDecoration: "none" }}>${m.cB?.sym}</a>}
+              {(() => {
+                const trendsUrl = m.type === "TRENDS" ? `https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.sym)},${encodeURIComponent(m.trendTermB || m.cB?.sym)}&date=today+1-m` : null;
+                return <>
+                  {m.type === "TRENDS"
+                    ? <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#64B5F6", textDecoration: "none" }}>{m.c.sym}</a>
+                    : <a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorA, textDecoration: "none" }}>${m.c.sym}</a>}
+                  <span style={{ fontSize: ".85em", color: "#ffffff" }}>VS</span>
+                  {m.type === "TRENDS"
+                    ? <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#a78bfa", textDecoration: "none" }}>{m.cB?.sym}</a>
+                    : <a href={`https://meme.com/coin/${MEME_SLUGS[m.cB?.sym] || (m.cB?.sym || "").toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ color: colorB, textDecoration: "none" }}>${m.cB?.sym}</a>}
+                </>;
+              })()}
             </div>
             <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
               display: "inline-block", padding: "1px 8px", borderRadius: 6, marginTop: 4, cursor: "default",
