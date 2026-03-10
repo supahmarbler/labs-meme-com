@@ -196,6 +196,82 @@ def update_trend_scores(battle: dict) -> dict:
     return {"score_a": score_a, "score_b": score_b}
 
 
+def update_all_active_mememarket() -> int:
+    """
+    Update trend scores for ALL active MEMEMARKET markets.
+    Uses batched get_interest_scores (5 terms per Pytrends call) for efficiency.
+    On first update, sets start_mc to the real score (replacing placeholder 50).
+    Returns number of markets updated.
+    """
+    import time as _time
+    from trends_discovery import get_interest_scores
+
+    sb = _get_client()
+    result = sb.table("labs_markets") \
+        .select("*") \
+        .eq("market_type", "MEMEMARKET") \
+        .eq("status", "OPEN") \
+        .execute()
+
+    markets = result.data or []
+    if not markets:
+        return 0
+
+    # Collect unique trend terms
+    term_to_markets = {}
+    for mkt in markets:
+        term = mkt.get("trend_term_a", "")
+        if term:
+            term_to_markets.setdefault(term, []).append(mkt)
+
+    # Batch fetch scores (get_interest_scores handles batching in groups of 5)
+    all_terms = list(term_to_markets.keys())
+    scores = {}
+    for i in range(0, len(all_terms), 5):
+        batch = all_terms[i:i + 5]
+        try:
+            batch_scores = get_interest_scores(batch)
+            scores.update(batch_scores)
+        except Exception as e:
+            logger.error(f"Failed to fetch scores for batch {batch}: {e}")
+        if i + 5 < len(all_terms):
+            _time.sleep(2)
+
+    updated = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for term, mkts in term_to_markets.items():
+        if term not in scores:
+            continue
+        current_score = scores[term]
+        for mkt in mkts:
+            try:
+                update_data = {
+                    "current_mc": current_score,
+                    "price_updated_at": now_iso,
+                }
+                # On first update: replace placeholder start_mc (50) with real score
+                if mkt.get("start_mc") == 50 and current_score != 50:
+                    update_data["start_mc"] = current_score
+
+                sb.table("labs_markets").update(update_data).eq("id", mkt["id"]).execute()
+
+                # Store snapshot for sparkline
+                sb.table("labs_trend_snapshots").insert({
+                    "market_id": mkt["id"],
+                    "score_a": current_score,
+                    "score_b": 0,
+                    "recorded_at": now_iso,
+                }).execute()
+
+                updated += 1
+                logger.info(f"Updated MEMEMARKET {mkt['id']}: score={current_score}")
+            except Exception as e:
+                logger.error(f"Failed to update MEMEMARKET {mkt['id']}: {e}")
+
+    return updated
+
+
 def update_all_active_trends() -> int:
     """
     Update trend scores for ALL active TRENDS markets.

@@ -323,7 +323,7 @@ const loadMarketsFromDb = async (includeResolved = false) => {
     // Filter out stale 5-min markets — only keep OPEN or markets expiring at 13:xx UTC
     return (data || []).filter(m => {
       if (m.status === "OPEN") return true;
-      if (m.market_type === "BATTLE" || m.market_type === "TRENDS" || m.market_type === "CUSTOM") return true;
+      if (m.market_type === "BATTLE" || m.market_type === "TRENDS" || m.market_type === "CUSTOM" || m.market_type === "MEMEMARKET") return true;
       const h = new Date(m.expires_at).getUTCHours();
       return h === 13;
     });
@@ -522,7 +522,7 @@ const loadMarketHistoryFromDb = async () => {
     if (error) throw error;
     // Filter out stale 5-min test markets — only keep markets expiring at 13:xx UTC
     return (data || []).filter(m => {
-      if (m.market_type === "BATTLE" || m.market_type === "TRENDS" || m.market_type === "CUSTOM") return true;
+      if (m.market_type === "BATTLE" || m.market_type === "TRENDS" || m.market_type === "CUSTOM" || m.market_type === "MEMEMARKET") return true;
       const h = new Date(m.expires_at).getUTCHours();
       return h === 13;
     });
@@ -561,7 +561,7 @@ const loadTradeHistoryFromDb = async (userId) => {
 const dedup = (mks) => {
   const openByKey = {};
   const result = [];
-  const dedupKey = (m) => (m.type === "BATTLE" || m.type === "TRENDS") ? battlePairKey(m.c.sym, m.cB.sym) : m.c.sym;
+  const dedupKey = (m) => (m.type === "BATTLE" || m.type === "TRENDS") ? battlePairKey(m.c.sym, m.cB.sym) : m.type === "MEMEMARKET" ? m.id : m.c.sym;
   // First pass: find highest-round OPEN market per key
   mks.forEach(m => {
     if (m.st === "OPEN") {
@@ -633,6 +633,16 @@ const dbMarketToLocal = (db, coinData, coinDataB) => {
     base.customDescription = db.custom_description;
     base.labelYes = db.label_yes || "YES";
     base.labelNo = db.label_no || "NO";
+  }
+  if (db.market_type === "MEMEMARKET") {
+    base.type = "MEMEMARKET";
+    base.customTitle = db.custom_title;
+    base.trendTermA = db.trend_term_a;
+    base.createdBy = db.created_by;
+    base.creationFee = Number(db.creation_fee) || 0;
+    base.b = Number(db.b) || 50000;
+    base.qY = (Number(db.q_yes) || 0) + base.b;
+    base.qN = (Number(db.q_no) || 0) + base.b;
   }
   return base;
 };
@@ -1920,9 +1930,11 @@ const TrendDualChart = ({ snapshots, m, aLeads, bLeads, colorOverride }) => {
     const base = startVal || 1;
     const pts = [{ score: 0, t: 0 }];
     if (snapshots && snapshots.length > 0) {
-      const t0 = new Date(snapshots[0].recorded_at).getTime();
+      // Filter out snapshots with 0/missing values (bad CoinGecko data)
+      const valid = snapshots.filter(s => Number(s.score_a) > 0 && Number(s.score_b) > 0);
+      const t0 = valid.length > 0 ? new Date(valid[0].recorded_at).getTime() : Date.now();
       const span = Date.now() - t0 || 1;
-      snapshots.forEach(s => {
+      valid.forEach(s => {
         const raw = Number(s[scoreKey]) || 0;
         pts.push({ score: ((raw - base) / base) * 100, t: (new Date(s.recorded_at).getTime() - t0) / span });
       });
@@ -2395,6 +2407,556 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
           <span style={{ color: "#ffffff30", marginRight: 4 }}></span>
           <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
         </span>}
+      </div>
+    </div>
+  );
+};
+
+// ─── MEMEMARKET CARD ───
+const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile, memeUser, onLoginRequired, trendSnaps = {} }) => {
+  const [step, setStep] = useState("sel");
+  const [side, setSide] = useState(null);
+  const [amt, setAmt] = useState("");
+  const [sec, setSec] = useState(0);
+
+  useEffect(() => {
+    const t = () => setSec(Math.max(0, Math.floor((m.ea - Date.now()) / 1000)));
+    t();
+    const i = setInterval(t, 1000);
+    return () => clearInterval(i);
+  }, [m.ea]);
+
+  useEffect(() => {
+    if (m.st === "RES" && pos) setStep("res");
+    else if (m.st === "OPEN" && pos && !pos.claimed) setStep("pos");
+    else if (m.st === "OPEN") setStep("sel");
+  }, [m.st, pos]);
+
+  const yp = yP(m.qY, m.qN, m.b);
+  const np = 100 - yp;
+  const scoreChange = m.startMc > 0 && m.startMc !== 50 ? ((m.mc - m.startMc) / m.startMc * 100) : 0;
+  const grossRf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
+  const sellFee = pos && m.st === "OPEN" ? Math.round(grossRf * 0.02) : 0;
+  const rf = grossRf - sellFee;
+  const pnl = pos ? grossRf - pos.inv : 0;
+  const isInitializing = m.startMc === 50 && m.mc === 50;
+
+  // Sparkline from snapshots
+  const snaps = trendSnaps[m.id] || [];
+  const sparkPoints = snaps.length > 1 ? (() => {
+    const scores = snaps.map(s => s.score_a);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const range = max - min || 1;
+    const w = 120, h = 28;
+    return scores.map((s, i) =>
+      `${(i / (scores.length - 1)) * w},${h - ((s - min) / range) * h}`
+    ).join(" ");
+  })() : null;
+
+  const doBuy = () => {
+    const a = parseInt(amt) || 0;
+    if (a <= 0 || a > bal) return;
+    onBuy(m.id, side, a);
+    setAmt("");
+    setStep("pos");
+  };
+
+  const bx = {
+    height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+    width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
+    textTransform: "uppercase", borderRadius: 15, cursor: "pointer",
+    border: "none", color: "#fff"
+  };
+
+  const durationLabel = (() => {
+    if (!m.ca) return "";
+    const hours = Math.round((m.ea - m.ca) / 3600000);
+    if (hours <= 24) return "1D";
+    if (hours <= 72) return "3D";
+    return "7D";
+  })();
+
+  return (
+    <div style={{
+      background: "linear-gradient(360deg,#1a2636,#2a4060)",
+      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px"
+    }}>
+      <div style={{
+        background: "#191f29", borderRadius: 14, padding: "14px 18px",
+        minHeight: 192, display: "flex", flexDirection: "column",
+        justifyContent: "space-between"
+      }}>
+        {/* Header: image + title + countdown */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 10, gap: 10, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+            {m.c.img && (
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0, overflow: "hidden",
+                border: "1px solid #ffffff1a", background: "#0c1018"
+              }}>
+                <img src={m.c.img} alt="" style={{
+                  width: "100%", height: "100%", objectFit: "cover", borderRadius: 11
+                }} onError={e => { e.target.style.display = "none"; }} />
+              </div>
+            )}
+            <div>
+              <div style={{
+                fontFamily: "'Londrina Solid',sans-serif", fontSize: ".95em",
+                lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis",
+                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical"
+              }}>{m.customTitle || `Will ${m.c.name} trend UP?`}</div>
+              <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.name)}&date=now%207-d`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: ".65em", color: "#71BAFF", textDecoration: "none", fontFamily: "'Jersey 25',sans-serif" }}>
+                Google Trends
+              </a>
+            </div>
+          </div>
+          <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
+            padding: "2px 8px", borderRadius: 8, flexShrink: 0, cursor: "default",
+            background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
+            border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
+            animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
+          }}>
+            <span style={{
+              fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em",
+              letterSpacing: "1px", ...gld
+            }}>{fT(sec)}</span>
+          </div>
+        </div>
+
+        {/* Score display + sparkline */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "6px 10px", background: "#0c101820", borderRadius: 8 }}>
+          <div>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40" }}>TREND SCORE</div>
+            {isInitializing ? (
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", color: "#f7931a" }}>Initializing...</div>
+            ) : (
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: "1em" }}>
+                <span style={{ color: "#ffffff60" }}>{Math.round(m.startMc)}</span>
+                <span style={{ color: "#ffffff30", margin: "0 4px" }}>&rarr;</span>
+                <span style={{ color: scoreChange >= 0 ? "#22c55e" : "#ef4444", fontWeight: "bold" }}>{Math.round(m.mc)}</span>
+                <span style={{ fontSize: ".8em", color: scoreChange >= 0 ? "#22c55e80" : "#ef444480", marginLeft: 4 }}>
+                  {scoreChange >= 0 ? "+" : ""}{scoreChange.toFixed(1)}%
+                </span>
+              </div>
+            )}
+          </div>
+          {sparkPoints && (
+            <svg width="120" height="28" viewBox="0 0 120 28" style={{ flexShrink: 0 }}>
+              <polyline points={sparkPoints} fill="none" stroke="#71BAFF" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+
+        {/* Bet display */}
+        {pos && !pos.claimed && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "nowrap", overflow: "hidden" }}>
+            <div style={{ minWidth: 0, flexShrink: 1 }}>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>YOUR BET</div>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
+                <span style={{ color: pos.side === "YES" ? "#22c55e" : "#ef4444" }}>
+                  {pos.side === "YES" ? "UP" : "DOWN"}
+                </span>
+                <span style={{ color: "#ffffff40", margin: "0 4px" }}>|</span>
+                <span style={gld}>{Math.round(pos.inv).toLocaleString()}</span>
+              </div>
+            </div>
+            <div style={{ minWidth: 0, flexShrink: 1, marginLeft: "auto" }}>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>VALUE</div>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
+                <span style={gld}>{Math.round(rf).toLocaleString()}</span>
+                <span style={{ fontSize: ".8em", color: pnl >= 0 ? "#22c55e80" : "#ef444480", marginLeft: 4 }}>
+                  {pnl >= 0 ? "+" : ""}{Math.round(pnl).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Probability bar */}
+        <div style={{ display: "flex", height: 22, borderRadius: 8, overflow: "hidden", marginBottom: 10, fontSize: ".75em", fontFamily: "'Jersey 25',sans-serif" }}>
+          <div style={{ width: yp + "%", background: "linear-gradient(90deg, #22c55e, #16a34a)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", minWidth: yp > 8 ? undefined : 0 }}>
+            {yp > 8 && `UP ${Math.round(yp)}%`}
+          </div>
+          <div style={{ width: np + "%", background: "linear-gradient(90deg, #dc2626, #ef4444)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", minWidth: np > 8 ? undefined : 0 }}>
+            {np > 8 && `DOWN ${Math.round(np)}%`}
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        {step === "sel" && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}
+              style={{ ...bx, background: "linear-gradient(135deg,#22c55e,#16a34a)" }}>BET UP</button>
+            <button onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}
+              style={{ ...bx, background: "linear-gradient(135deg,#ef4444,#dc2626)" }}>BET DOWN</button>
+          </div>
+        )}
+        {step === "amt" && (
+          <div>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", marginBottom: 4 }}>
+              Amount ({side === "YES" ? "UP" : "DOWN"})
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              {[100, 500, 1000].map(v => (
+                <button key={v} onClick={() => setAmt(String(Math.min(v, bal)))}
+                  style={{ ...bx, height: 30, fontSize: ".85em", background: amt === String(v) ? "#ffffff30" : "#ffffff10", borderRadius: 8, flex: 1 }}>
+                  {v.toLocaleString()}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="number" value={amt} onChange={e => setAmt(e.target.value)}
+                placeholder="Custom" style={{
+                  flex: 1, height: 36, borderRadius: 10, border: "1px solid #ffffff20",
+                  background: "#0c1018", color: "#fff", padding: "0 10px",
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none"
+                }} />
+              <button onClick={doBuy}
+                style={{ ...bx, width: 80, background: side === "YES" ? "linear-gradient(135deg,#22c55e,#16a34a)" : "linear-gradient(135deg,#ef4444,#dc2626)" }}>BET</button>
+            </div>
+            <button onClick={() => { setStep("sel"); setSide(null); setAmt(""); }}
+              style={{ background: "none", border: "none", color: "#ffffff40", cursor: "pointer", fontSize: ".7em", fontFamily: "'Jersey 25',sans-serif", marginTop: 4 }}>Cancel</button>
+          </div>
+        )}
+        {step === "pos" && pos && (
+          <div>
+            <button onClick={() => setStep("sellConfirm")}
+              style={{ ...bx, background: "#ffffff10", marginBottom: 4 }}>
+              SELL ({Math.round(rf).toLocaleString()})
+            </button>
+          </div>
+        )}
+        {step === "sellConfirm" && pos && (
+          <div>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", marginBottom: 6, textAlign: "center" }}>
+              Sell for {Math.round(rf).toLocaleString()} ({pnl >= 0 ? "+" : ""}{Math.round(pnl).toLocaleString()} PnL)?{sellFee > 0 && ` Fee: ${sellFee}`}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setStep("pos")}
+                style={{ ...bx, background: "#ffffff10" }}>CANCEL</button>
+              <button onClick={() => { onSell(m.id); setStep("sel"); }}
+                style={{ ...bx, background: "linear-gradient(135deg,#f7931a,#e8720c)" }}>CONFIRM SELL</button>
+            </div>
+          </div>
+        )}
+        {step === "res" && pos && (
+          <div>
+            {m.res === pos.side ? (
+              <button onClick={() => onClaim(m.id)}
+                style={{ ...bx, background: "linear-gradient(135deg,#22c55e,#16a34a)", animation: "claimPop .4s ease-out, claimGlow 2s ease-in-out" }}>
+                CLAIM {Math.round(pos.sh).toLocaleString()}
+              </button>
+            ) : (
+              <button onClick={() => onClaim(m.id)}
+                style={{ ...bx, background: "#ffffff10", color: "#ffffff60" }}>
+                YOU LOST. CLOSE.
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, fontSize: ".75em" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{
+              fontFamily: "'Jersey 25',sans-serif",
+              background: "linear-gradient(90deg, #71BAFF40, #4a90d940)",
+              padding: "2px 8px", borderRadius: 4, color: "#71BAFF"
+            }}>{durationLabel} MEMEMARKET</span>
+          </div>
+          {marketPool(m.qY, m.qN, m.b) > 0 && (
+            <span style={{ fontFamily: "'Jersey 25',sans-serif" }}>
+              <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── MEMEMARKET WATCHLIST ───
+const MEME_WATCHLIST = [
+  { name: "Doge", term: "doge meme", img: "https://i.imgflip.com/4t0m5.jpg" },
+  { name: "Pepe", term: "pepe the frog", img: "https://i.imgflip.com/1ur9b0.jpg" },
+  { name: "Wojak", term: "wojak meme", img: "https://i.imgflip.com/2zo1ki.jpg" },
+  { name: "Distracted Boyfriend", term: "distracted boyfriend meme", img: "https://i.imgflip.com/1ur9b0.jpg" },
+  { name: "Drake", term: "drake meme", img: "https://i.imgflip.com/30b1gx.jpg" },
+  { name: "NPC", term: "NPC meme", img: "" },
+  { name: "Stonks", term: "stonks meme", img: "" },
+  { name: "This Is Fine", term: "this is fine meme", img: "" },
+  { name: "Galaxy Brain", term: "galaxy brain meme", img: "" },
+  { name: "Chad", term: "chad meme", img: "" },
+  { name: "Soyjak", term: "soyjak meme", img: "" },
+  { name: "Giga Chad", term: "gigachad meme", img: "" },
+  { name: "Brainlet", term: "brainlet meme", img: "" },
+  { name: "Cope", term: "copium meme", img: "" },
+  { name: "Based", term: "based meme", img: "" },
+  { name: "Touching Grass", term: "touch grass meme", img: "" },
+  { name: "Rug Pull", term: "rug pull crypto", img: "" },
+  { name: "Diamond Hands", term: "diamond hands meme", img: "" },
+  { name: "To The Moon", term: "to the moon crypto", img: "" },
+  { name: "WAGMI", term: "wagmi crypto", img: "" },
+  { name: "Keyboard Cat", term: "keyboard cat meme", img: "" },
+  { name: "Rickroll", term: "rickroll meme", img: "" },
+  { name: "Grumpy Cat", term: "grumpy cat meme", img: "" },
+  { name: "Elon Musk", term: "elon musk meme", img: "" },
+  { name: "Shiba Inu", term: "shiba inu meme", img: "" },
+  { name: "Bonk", term: "bonk meme", img: "" },
+  { name: "Sus", term: "sus among us meme", img: "" },
+  { name: "Skibidi", term: "skibidi toilet meme", img: "" },
+  { name: "Sigma", term: "sigma male meme", img: "" },
+  { name: "Mog", term: "mogging meme", img: "" },
+];
+
+// ─── MEMEMARKET CREATE MODAL ───
+const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequired }) => {
+  const [wizStep, setWizStep] = useState(1); // 1=pick, 2=duration, 3=confirm
+  const [memeName, setMemeName] = useState("");
+  const [trendTerm, setTrendTerm] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [duration, setDuration] = useState(72);
+  const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState(null);
+  const CREATION_FEE = 1000;
+
+  if (!show) return null;
+
+  const filteredWatchlist = search
+    ? MEME_WATCHLIST.filter(w => w.name.toLowerCase().includes(search.toLowerCase()) || w.term.toLowerCase().includes(search.toLowerCase()))
+    : MEME_WATCHLIST;
+
+  const selectMeme = (w) => {
+    setMemeName(w.name);
+    setTrendTerm(w.term);
+    setImageUrl(w.img || "");
+    setWizStep(2);
+  };
+
+  const selectCustom = () => {
+    if (!memeName.trim() || !trendTerm.trim()) return;
+    setWizStep(2);
+  };
+
+  const doCreate = async () => {
+    if (!memeUser) { onLoginRequired(); return; }
+    if (bal < CREATION_FEE) { setError("Need " + CREATION_FEE.toLocaleString() + " memescore"); return; }
+    setCreating(true);
+    setError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('labs_create_mememarket', {
+        p_user_id: memeUser.id || memeUser.user_id,
+        p_meme_name: memeName.trim(),
+        p_trend_term: trendTerm.trim(),
+        p_image_url: imageUrl.trim(),
+        p_duration_hours: duration,
+      });
+      if (rpcErr) throw rpcErr;
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      if (!result.success) {
+        const msgs = {
+          name_invalid: "Name must be 2-50 characters",
+          term_invalid: "Trend term must be 2-80 characters",
+          duration_invalid: "Invalid duration",
+          max_markets_reached: "Max 20 markets reached. Try again later.",
+          duplicate_term: "A market for this term already exists!",
+          user_not_found: "User not found. Try refreshing.",
+          insufficient_balance: "Not enough balance (need " + CREATION_FEE.toLocaleString() + ")",
+        };
+        setError(msgs[result.error] || result.error);
+        setCreating(false);
+        return;
+      }
+      onCreated(result);
+      onClose();
+      // Reset
+      setWizStep(1);
+      setMemeName("");
+      setTrendTerm("");
+      setImageUrl("");
+      setDuration(72);
+      setSearch("");
+    } catch (e) {
+      setError(e.message || "Failed to create market");
+    }
+    setCreating(false);
+  };
+
+  const durationOpts = [
+    { hours: 24, label: "1 DAY" },
+    { hours: 72, label: "3 DAYS" },
+    { hours: 168, label: "7 DAYS" },
+  ];
+
+  const overlayStyle = {
+    position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+    background: "rgba(0,0,0,0.7)", zIndex: 1000,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: 16
+  };
+  const modalStyle = {
+    background: "#191f29", borderRadius: 20, padding: "24px 28px",
+    maxWidth: 440, width: "100%", maxHeight: "85vh", overflow: "auto",
+    boxShadow: "0 8px 48px rgba(0,0,0,0.6)", border: "1px solid #ffffff10"
+  };
+
+  return (
+    <div style={overlayStyle} onClick={onClose}>
+      <div style={modalStyle} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.3em" }}>
+            {wizStep === 1 ? "Pick a Meme" : wizStep === 2 ? "Choose Duration" : "Confirm Market"}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#ffffff60", cursor: "pointer", fontSize: "1.3em" }}>&times;</button>
+        </div>
+
+        {/* Step indicator */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          {[1, 2, 3].map(s => (
+            <div key={s} style={{
+              flex: 1, height: 3, borderRadius: 2,
+              background: s <= wizStep ? "linear-gradient(90deg,#71BAFF,#4a90d9)" : "#ffffff15"
+            }} />
+          ))}
+        </div>
+
+        {/* Step 1: Pick meme */}
+        {wizStep === 1 && (
+          <div>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search memes..." style={{
+                width: "100%", height: 36, borderRadius: 10, border: "1px solid #ffffff20",
+                background: "#0c1018", color: "#fff", padding: "0 12px",
+                fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
+                marginBottom: 10, boxSizing: "border-box"
+              }} />
+            <div style={{ maxHeight: 200, overflow: "auto", marginBottom: 12 }}>
+              {filteredWatchlist.map(w => (
+                <button key={w.term} onClick={() => selectMeme(w)} style={{
+                  display: "block", width: "100%", padding: "8px 12px", marginBottom: 4,
+                  background: "#ffffff08", border: "1px solid #ffffff10", borderRadius: 8,
+                  color: "#fff", cursor: "pointer", textAlign: "left",
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
+                }}>
+                  {w.name} <span style={{ color: "#ffffff40", fontSize: ".8em" }}>({w.term})</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ borderTop: "1px solid #ffffff10", paddingTop: 12 }}>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#ffffff60", marginBottom: 6 }}>Or create custom:</div>
+              <input value={memeName} onChange={e => setMemeName(e.target.value)}
+                placeholder="Meme name (e.g. Doge)" style={{
+                  width: "100%", height: 32, borderRadius: 8, border: "1px solid #ffffff20",
+                  background: "#0c1018", color: "#fff", padding: "0 10px",
+                  fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
+                  marginBottom: 6, boxSizing: "border-box"
+                }} />
+              <input value={trendTerm} onChange={e => setTrendTerm(e.target.value)}
+                placeholder="Google Trends term (e.g. doge meme)" style={{
+                  width: "100%", height: 32, borderRadius: 8, border: "1px solid #ffffff20",
+                  background: "#0c1018", color: "#fff", padding: "0 10px",
+                  fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
+                  marginBottom: 6, boxSizing: "border-box"
+                }} />
+              <input value={imageUrl} onChange={e => setImageUrl(e.target.value)}
+                placeholder="Image URL (optional)" style={{
+                  width: "100%", height: 32, borderRadius: 8, border: "1px solid #ffffff20",
+                  background: "#0c1018", color: "#fff", padding: "0 10px",
+                  fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
+                  marginBottom: 8, boxSizing: "border-box"
+                }} />
+              <button onClick={selectCustom} disabled={!memeName.trim() || !trendTerm.trim()}
+                style={{
+                  width: "100%", height: 36, borderRadius: 10, border: "none",
+                  background: memeName.trim() && trendTerm.trim() ? "linear-gradient(135deg,#71BAFF,#4a90d9)" : "#ffffff15",
+                  color: "#fff", cursor: memeName.trim() && trendTerm.trim() ? "pointer" : "default",
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1em"
+                }}>NEXT</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Duration */}
+        {wizStep === 2 && (
+          <div>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", color: "#ffffff80", marginBottom: 12, textAlign: "center" }}>
+              "Will <span style={{ color: "#71BAFF" }}>{memeName}</span> trend UP?"
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {durationOpts.map(d => (
+                <button key={d.hours} onClick={() => setDuration(d.hours)}
+                  style={{
+                    flex: 1, height: 48, borderRadius: 12, border: duration === d.hours ? "2px solid #71BAFF" : "1px solid #ffffff15",
+                    background: duration === d.hours ? "#71BAFF15" : "#ffffff08",
+                    color: duration === d.hours ? "#71BAFF" : "#ffffff80",
+                    cursor: "pointer", fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em"
+                  }}>{d.label}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setWizStep(1)}
+                style={{ flex: 1, height: 36, borderRadius: 10, border: "1px solid #ffffff20", background: "none", color: "#ffffff60", cursor: "pointer", fontFamily: "'Jersey 25',sans-serif" }}>BACK</button>
+              <button onClick={() => setWizStep(3)}
+                style={{ flex: 2, height: 36, borderRadius: 10, border: "none", background: "linear-gradient(135deg,#71BAFF,#4a90d9)", color: "#fff", cursor: "pointer", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em" }}>NEXT</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Confirm */}
+        {wizStep === 3 && (
+          <div>
+            <div style={{
+              background: "#0c101830", borderRadius: 12, padding: 16, marginBottom: 16,
+              border: "1px solid #ffffff10"
+            }}>
+              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em", marginBottom: 8 }}>
+                Will <span style={{ color: "#71BAFF" }}>{memeName}</span> trend UP in {duration === 24 ? "1 day" : duration === 72 ? "3 days" : "7 days"}?
+              </div>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#ffffff60" }}>
+                Term: {trendTerm}
+              </div>
+              {imageUrl && (
+                <img src={imageUrl} alt="" style={{ width: 60, height: 60, borderRadius: 8, marginTop: 8, objectFit: "cover" }}
+                  onError={e => { e.target.style.display = "none"; }} />
+              )}
+            </div>
+            <div style={{
+              display: "flex", justifyContent: "space-between", padding: "10px 0",
+              borderTop: "1px solid #ffffff10", fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
+            }}>
+              <span style={{ color: "#ffffff60" }}>Creation Fee</span>
+              <span style={gld}>{CREATION_FEE.toLocaleString()}</span>
+            </div>
+            <div style={{
+              display: "flex", justifyContent: "space-between", padding: "6px 0 12px",
+              fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
+            }}>
+              <span style={{ color: "#ffffff60" }}>Your Balance</span>
+              <span style={{ color: bal >= CREATION_FEE ? "#22c55e" : "#ef4444" }}>{Math.round(bal).toLocaleString()}</span>
+            </div>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em", color: "#ffffff40", marginBottom: 10 }}>
+              Fee returned at resolution + 25% of market fees
+            </div>
+            {error && <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#ef4444", marginBottom: 8 }}>{error}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setWizStep(2)}
+                style={{ flex: 1, height: 40, borderRadius: 12, border: "1px solid #ffffff20", background: "none", color: "#ffffff60", cursor: "pointer", fontFamily: "'Jersey 25',sans-serif" }}>BACK</button>
+              <button onClick={doCreate} disabled={creating || bal < CREATION_FEE}
+                style={{
+                  flex: 2, height: 40, borderRadius: 12, border: "none",
+                  background: creating || bal < CREATION_FEE ? "#ffffff15" : "linear-gradient(135deg,#71BAFF,#4a90d9)",
+                  color: "#fff", cursor: creating || bal < CREATION_FEE ? "default" : "pointer",
+                  fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em"
+                }}>{creating ? "Creating..." : "CREATE MARKET"}</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3294,6 +3856,8 @@ function App() {
     return () => clearInterval(id);
   }, [lastCensusAt]);
   const [pmMarkets, setPmMarkets] = useState([]);
+  const [activeTab, setActiveTab] = useState("arena");
+  const [showCreateMemeMarket, setShowCreateMemeMarket] = useState(false);
 
   // Refresh leaderboard, market history, and trade history from database
   const refreshLeaderboard = useCallback(async () => {
@@ -3511,17 +4075,8 @@ function App() {
         const maxRound = dbMarkets.filter(db => (db.market_type || "UPDOWN") === "UPDOWN")
           .reduce((max, db) => { const rn = parseInt(db.id.split("-")[1]) || 0; return rn > max ? rn : max; }, 0);
         maxUpdownRound.current = maxRound;
-        // Create random UPDOWN markets until we have NUM_UPDOWN_MARKETS open — sync to DB only
-        const openSyms = new Set(dbMarkets.filter(db => db.status === "OPEN" && (db.market_type || "UPDOWN") === "UPDOWN").map(db => db.coin_symbol));
+        // Auto-creation disabled — markets managed server-side
         let needsRefetch = false;
-        while (openSyms.size < NUM_UPDOWN_MARKETS) {
-          const sym = pickUpdownCoin(openSyms);
-          if (!sym) break;
-          const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
-          syncMarketToDb(newM);
-          openSyms.add(sym);
-          needsRefetch = true;
-        }
         // Battle markets are only created via auto-renew when the previous battle resolves
         setMks(dedup(localMks));
         // Re-fetch from DB to pick up markets that actually got created (trigger may reject some)
@@ -3606,7 +4161,7 @@ function App() {
       }
       // Fetch trend/battle snapshots for initial render (last 200 per market)
       if (dbMarkets) {
-        const trendIds = dbMarkets.filter(d => d.market_type === 'TRENDS' || d.market_type === 'BATTLE').map(d => d.id);
+        const trendIds = dbMarkets.filter(d => d.market_type === 'TRENDS' || d.market_type === 'BATTLE' || d.market_type === 'MEMEMARKET').map(d => d.id);
         if (trendIds.length > 0) {
           const grouped = {};
           await Promise.all(trendIds.map(async (mid) => {
@@ -3801,6 +4356,8 @@ function App() {
               // Record snapshot for battle chart (skip if unchanged)
               if (coinACg && coinBCg) {
                 const newA = coinACg.market_cap, newB = coinBCg.market_cap;
+                if (!newA || !newB) { /* skip snapshot if either market cap missing */ }
+                else {
                 const lastSnaps = trendSnapsRef.current?.[battleMarket.id];
                 const prev = lastSnaps && lastSnaps.length > 0 ? lastSnaps[lastSnaps.length - 1] : null;
                 if (!prev || Number(prev.score_a) !== newA || Number(prev.score_b) !== newB) {
@@ -3809,6 +4366,7 @@ function App() {
                     p_score_a: newA,
                     p_score_b: newB
                   });
+                }
                 }
               }
             }
@@ -3842,7 +4400,7 @@ function App() {
       dbMarkets.forEach(db => { dbMap[db.id] = db; });
 
       // Fetch trend/battle snapshots for sparkline (last 200 per market)
-      const trendIds = dbMarkets.filter(d => d.market_type === 'TRENDS' || d.market_type === 'BATTLE').map(d => d.id);
+      const trendIds = dbMarkets.filter(d => d.market_type === 'TRENDS' || d.market_type === 'BATTLE' || d.market_type === 'MEMEMARKET').map(d => d.id);
       if (trendIds.length > 0) {
         const grouped = {};
         await Promise.all(trendIds.map(async (mid) => {
@@ -3912,38 +4470,7 @@ function App() {
         return dedup(updated);
       });
 
-      // Ensure we have enough OPEN UP/DOWN markets — create missing ones (DB trigger caps at 4)
-      const openUpdown = dbMarkets.filter(db => db.status === "OPEN" && (db.market_type === null || db.market_type === "UPDOWN"));
-      if (openUpdown.length < NUM_UPDOWN_MARKETS && Object.keys(battleCoinMap).length > 0) {
-        const openSyms = new Set(openUpdown.map(db => db.coin_symbol));
-        const allRounds = dbMarkets.filter(db => (db.market_type || "UPDOWN") === "UPDOWN")
-          .map(db => parseInt(db.id.split("-")[1]) || 0);
-        let round = Math.max(0, ...allRounds);
-        while (openSyms.size < NUM_UPDOWN_MARKETS) {
-          const sym = pickUpdownCoin(openSyms);
-          if (!sym) break;
-          const newM = mk(battleCoinMap[sym], ++round);
-          syncMarketToDb(newM);
-          openSyms.add(sym);
-        }
-        maxUpdownRound.current = Math.max(maxUpdownRound.current, round);
-      }
-      // Battle auto-creation: if no OPEN battle exists, create one
-      const hasOpenBattle = dbMarkets.some(db => db.status === "OPEN" && db.market_type === "BATTLE");
-      if (!hasOpenBattle && Object.keys(battleCoinMap).length >= 2) {
-        const matchup = pickBattleMatchup(battleCoinMap);
-        if (matchup) {
-          const allBattleRounds = dbMarkets.filter(db => db.market_type === "BATTLE")
-            .map(db => { const parts = db.id.split("-"); return parseInt(parts[parts.length - 1]) || 0; });
-          const nextRound = Math.max(0, ...allBattleRounds) + 1;
-          const [symA, symB] = matchup;
-          const newM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], nextRound);
-          syncMarketToDb(newM);
-          supabase.rpc('labs_insert_snapshot', {
-            p_market_id: newM.id, p_score_a: newM.mc, p_score_b: newM.mcB
-          });
-        }
-      }
+      // Auto-creation disabled — markets managed server-side
     };
     const refreshAll = async () => {
       await refreshMarkets();
@@ -3983,32 +4510,7 @@ function App() {
         const newMarkets = [];
         // Clean up resolved markets the user has claimed/dismissed
         const dismissable = resolved.filter(m => !pos[m.id] || pos[m.id].claimed);
-        // Auto-renew battles — sync to DB only, let refreshMarkets pick it up (prevents flickering)
-        const resolvedBattle = dismissable.find(m => m.type === "BATTLE");
-        if (resolvedBattle && !hasOpenBattle && battleRenewAttempted.current !== resolvedBattle.id) {
-          battleRenewAttempted.current = resolvedBattle.id;
-          const matchup = pickBattleMatchup(battleCoinMap);
-          if (matchup) {
-            const [symA, symB] = matchup;
-            const newM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], resolvedBattle.rn + 1);
-            // Only sync to DB — don't add to local state. DB trigger deduplicates across clients.
-            // refreshMarkets (15s) will pick up whichever battle actually got created.
-            syncMarketToDb(newM);
-            supabase.rpc('labs_insert_snapshot', {
-              p_market_id: newM.id, p_score_a: newM.mc, p_score_b: newM.mcB
-            });
-          }
-        }
-        // Auto-renew UP/DOWN — sync to DB only, refreshMarkets picks them up
-        if (openUpdownSyms.size < NUM_UPDOWN_MARKETS) {
-          for (let n = openUpdownSyms.size; n < NUM_UPDOWN_MARKETS; n++) {
-            const sym = pickUpdownCoin(openUpdownSyms);
-            if (!sym) break;
-            const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
-            syncMarketToDb(newM);
-            openUpdownSyms.add(sym);
-          }
-        }
+        // Auto-creation disabled — markets managed server-side
         // Clean up dismissed resolved markets from local state
         if (dismissable.length === 0) return p;
         const resolvedIds = new Set(dismissable.map(m => m.id));
@@ -4030,7 +4532,8 @@ function App() {
           const hasBonus = won && (m.fp || 0) > 0;
           setNotification({
             id: m.id,
-            coin: m.type === "CUSTOM" ? (m.customTitle || "Prediction") : (m.type === "BATTLE" || m.type === "TRENDS") ? m.c.sym + " vs " + m.cB?.sym : m.c.sym,
+            coin: m.type === "CUSTOM" ? (m.customTitle || "Prediction") : m.type === "MEMEMARKET" ? m.c.name : (m.type === "BATTLE" || m.type === "TRENDS") ? m.c.sym + " vs " + m.cB?.sym : m.c.sym,
+            isMemeMarket: m.type === "MEMEMARKET",
             result: m.res,
             won,
             reward,
@@ -4290,11 +4793,12 @@ function App() {
   // Build display list: resolved with unclaimed position takes priority over OPEN for same key
   const ranked = useMemo(() => {
     const resByKey = {};
-    const mKey = (m) => (m.type === "BATTLE") ? "BATTLE" : (m.type === "TRENDS") ? "TRENDS" : (m.type === "CUSTOM") ? m.id : m.c.sym;
+    const mKey = (m) => (m.type === "BATTLE") ? "BATTLE" : (m.type === "TRENDS") ? "TRENDS" : (m.type === "CUSTOM") ? m.id : (m.type === "MEMEMARKET") ? m.id : m.c.sym;
     mks.forEach(m => {
       if (m.st === "RES" && pos[m.id] && !pos[m.id].claimed) resByKey[mKey(m)] = m;
     });
     const filtered = mks.filter(m => {
+      if (m.type === "MEMEMARKET") return false; // MEMEMARKET shown in separate tab
       if (m.st === "OPEN" && resByKey[mKey(m)]) return false;
       if (m.st === "RES" && (!pos[m.id] || pos[m.id].claimed)) return false;
       return true;
@@ -4306,6 +4810,14 @@ function App() {
     updown.sort((a, b) => a.c.sym.localeCompare(b.c.sym));
     customs.sort((a, b) => a.ea - b.ea);
     return [...updown, ...battles, ...customs];
+  }, [mks, pos]);
+
+  // MemeMarket display list (separate from arena ranked)
+  const memeMarkets = useMemo(() => {
+    const all = mks.filter(m => m.type === "MEMEMARKET");
+    const open = all.filter(m => m.st === "OPEN").sort((a, b) => a.ea - b.ea);
+    const resolved = all.filter(m => m.st === "RES" && pos[m.id] && !pos[m.id].claimed);
+    return [...resolved, ...open];
   }, [mks, pos]);
 
   if (loading) {
@@ -4344,6 +4856,8 @@ function App() {
             <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em" }}>
               {notification.isBattle
                 ? `${notification.isTrends ? "" : "$"}${notification.winnerSym} WON the battle!`
+                : notification.isMemeMarket
+                ? `${notification.coin} ${notification.result === "YES" ? "TRENDED UP!" : "TRENDED DOWN"}`
                 : `$${notification.coin} ${notification.result === "YES" ? "WENT UP!" : "WENT DOWN"}`}
             </div>
             <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".9em", opacity:.9 }}>
@@ -4429,7 +4943,7 @@ function App() {
           <div style={{
             fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? "1.3em" : "1.6em",
             textTransform:"uppercase", textShadow:"0 2px 4px rgba(0,0,0,.5)"
-          }}>Meme Arena{!isProd && <span style={{
+          }}>{activeTab === "arena" ? "Meme Arena" : "MemeMarket"}{!isProd && <span style={{
             fontSize:".45em", background:"#ff4444", color:"#fff", padding:"2px 8px",
             borderRadius:4, marginLeft:10, verticalAlign:"middle", letterSpacing:1
           }}>DEV</span>}</div>
@@ -4437,11 +4951,23 @@ function App() {
             fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".75em" : ".9em",
             color:"#ffffff60"
           }}>
-            Predict targets. Vote with conviction on your favorite memes.
+            {activeTab === "arena" ? "Predict targets. Vote with conviction on your favorite memes." : "Create prediction markets on meme virality via Google Trends."}
           </div>
+          {/* Tab bar — MemeMarket only visible to supahmarbler */}
+          {memeUser?.username === "supahmarbler" && <div style={{ display:"flex", gap:8, marginTop:10 }}>
+            {[{id:"arena",label:"Meme Arena"},{id:"mememarket",label:"MemeMarket"}].map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? ".85em" : ".95em",
+                padding:"6px 16px", borderRadius:10, cursor:"pointer", border:"none",
+                background: activeTab === tab.id ? "linear-gradient(135deg,#71BAFF,#4a90d9)" : "#ffffff10",
+                color: activeTab === tab.id ? "#fff" : "#ffffff60",
+                transition:"all .15s ease"
+              }}>{tab.label}</button>
+            ))}
+          </div>}
         </div>
 
-        <div style={{
+        {activeTab === "arena" && <div style={{
           display: isMobile ? "flex" : "grid",
           flexDirection: isMobile ? "column" : undefined,
           gridTemplateColumns: isMobile ? undefined : "1fr 20em",
@@ -4898,8 +5424,93 @@ function App() {
             )}
 
           </div>
-        </div>
+        </div>}
+
+        {activeTab === "mememarket" && <div>
+          {/* Create button */}
+          <div style={{ marginBottom: 16 }}>
+            <button onClick={() => {
+              if (!memeUser) { setShowDeposit(true); return; }
+              setShowCreateMemeMarket(true);
+            }} style={{
+              fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? "1em" : "1.1em",
+              padding:"10px 24px", borderRadius:12, border:"none",
+              background:"linear-gradient(135deg,#71BAFF,#4a90d9)",
+              color:"#fff", cursor:"pointer",
+              boxShadow:"0 4px 16px rgba(113,186,255,0.3)"
+            }}>+ CREATE MARKET</button>
+          </div>
+
+          {/* Market grid */}
+          {memeMarkets.length === 0 ? (
+            <div style={{
+              textAlign:"center", padding:"48px 16px",
+              fontFamily:"'Jersey 25',sans-serif", fontSize:"1.1em", color:"#ffffff40"
+            }}>
+              No markets yet — be the first to create one!
+            </div>
+          ) : (
+            <div style={{
+              display:"grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(17em, 1fr))",
+              gap: isMobile ? 12 : 16
+            }}>
+              {memeMarkets.map(m => (
+                <MemeMarketCard key={m.id} m={m} bal={bal}
+                  pos={pos[m.id]||null}
+                  players={marketPlayers[m.id]||[]}
+                  onBuy={onBuy} onSell={onSell} onClaim={onClaim}
+                  isMobile={isMobile}
+                  memeUser={memeUser}
+                  onLoginRequired={() => setShowDeposit(true)}
+                  trendSnaps={trendSnapsRef.current}/>
+              ))}
+            </div>
+          )}
+
+          {/* Your created markets (only show resolved ones not in main grid) */}
+          {userId.current && (() => {
+            const mainIds = new Set(memeMarkets.map(m => m.id));
+            const myMarkets = mks.filter(m => m.type === "MEMEMARKET" && m.createdBy === userId.current && !mainIds.has(m.id));
+            if (myMarkets.length === 0) return null;
+            return (
+              <div style={{ marginTop: 24 }}>
+                <div style={{ fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em", marginBottom:10, color:"#ffffff80" }}>Your Markets</div>
+                <div style={{
+                  display:"grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(17em, 1fr))",
+                  gap: isMobile ? 12 : 16
+                }}>
+                  {myMarkets.map(m => (
+                    <MemeMarketCard key={"my-"+m.id} m={m} bal={bal}
+                      pos={pos[m.id]||null}
+                      players={marketPlayers[m.id]||[]}
+                      onBuy={onBuy} onSell={onSell} onClaim={onClaim}
+                      isMobile={isMobile}
+                      memeUser={memeUser}
+                      onLoginRequired={() => setShowDeposit(true)}
+                      trendSnaps={trendSnapsRef.current}/>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>}
       </div>
+
+      <MemeMarketCreateModal
+        show={showCreateMemeMarket}
+        onClose={() => setShowCreateMemeMarket(false)}
+        bal={bal}
+        memeUser={memeUser ? { id: userId.current, ...memeUser } : null}
+        onLoginRequired={() => setShowDeposit(true)}
+        onCreated={(result) => {
+          setBal(result.new_balance);
+          setActiveTab("mememarket");
+          // Trigger market refresh by updating lastUpdate
+          setLastUpdate(new Date());
+        }}
+      />
 
       {showProfile && (() => {
         const dbTierMap = { GOLD:"gold", SILVER:"purple", BRONZE:"green" };

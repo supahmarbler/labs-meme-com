@@ -22,16 +22,27 @@ logger = logging.getLogger(__name__)
 # Ensure module is importable
 sys.path.insert(0, os.path.dirname(__file__))
 
-from supabase_integration import update_all_active_trends
+from supabase_integration import update_all_active_trends, update_all_active_mememarket
 
 
 def main():
     logger.info("Starting trend score update...")
+    failed = False
     try:
         count = update_all_active_trends()
         logger.info(f"Updated {count} active TRENDS market(s)")
     except Exception as e:
-        logger.error(f"Cron failed: {e}", exc_info=True)
+        logger.error(f"TRENDS update failed: {e}", exc_info=True)
+        failed = True
+
+    try:
+        mm_count = update_all_active_mememarket()
+        logger.info(f"Updated {mm_count} active MEMEMARKET market(s)")
+    except Exception as e:
+        logger.error(f"MEMEMARKET update failed: {e}", exc_info=True)
+        failed = True
+
+    if failed:
         sys.exit(1)
 
 
