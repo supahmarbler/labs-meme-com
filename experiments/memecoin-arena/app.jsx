@@ -640,7 +640,7 @@ const dbMarketToLocal = (db, coinData, coinDataB) => {
     base.trendTermA = db.trend_term_a;
     base.createdBy = db.created_by;
     base.creationFee = Number(db.creation_fee) || 0;
-    base.b = Number(db.b) || 50000;
+    base.b = Number(db.b) || 100000;
     base.qY = (Number(db.q_yes) || 0) + base.b;
     base.qN = (Number(db.q_no) || 0) + base.b;
   }
@@ -2667,6 +2667,13 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
               background: "linear-gradient(90deg, #71BAFF40, #4a90d940)",
               padding: "2px 8px", borderRadius: 4, color: "#71BAFF"
             }}>{durationLabel} MEMEMARKET</span>
+            {m.creationFee > 0 && (
+              <span style={{
+                fontFamily: "'Jersey 25',sans-serif",
+                background: "linear-gradient(90deg, #22c55e30, #16a34a20)",
+                padding: "2px 8px", borderRadius: 4, color: "#22c55e"
+              }}>{m.creationFee >= 1000 ? Math.round(m.creationFee / 1000) + "K" : m.creationFee} LIQ</span>
+            )}
           </div>
           {marketPool(m.qY, m.qN, m.b) > 0 && (
             <span style={{ fontFamily: "'Jersey 25',sans-serif" }}>
@@ -2717,44 +2724,46 @@ const MEME_WATCHLIST = [
 const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequired }) => {
   const [wizStep, setWizStep] = useState(1); // 1=pick, 2=duration, 3=confirm
   const [memeName, setMemeName] = useState("");
-  const [trendTerm, setTrendTerm] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [duration, setDuration] = useState(72);
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
-  const CREATION_FEE = 1000;
+  const [liquidity, setLiquidity] = useState(100000);
+  const MIN_LIQUIDITY = 100000;
 
   if (!show) return null;
 
   const filteredWatchlist = search
-    ? MEME_WATCHLIST.filter(w => w.name.toLowerCase().includes(search.toLowerCase()) || w.term.toLowerCase().includes(search.toLowerCase()))
+    ? MEME_WATCHLIST.filter(w => w.name.toLowerCase().includes(search.toLowerCase()))
     : MEME_WATCHLIST;
 
   const selectMeme = (w) => {
     setMemeName(w.name);
-    setTrendTerm(w.term);
     setImageUrl(w.img || "");
     setWizStep(2);
   };
 
   const selectCustom = () => {
-    if (!memeName.trim() || !trendTerm.trim()) return;
+    if (!memeName.trim() || !imageUrl.trim()) return;
     setWizStep(2);
   };
 
+  const effectiveLiquidity = Math.max(liquidity, MIN_LIQUIDITY);
+
   const doCreate = async () => {
     if (!memeUser) { onLoginRequired(); return; }
-    if (bal < CREATION_FEE) { setError("Need " + CREATION_FEE.toLocaleString() + " memescore"); return; }
+    if (bal < effectiveLiquidity) { setError("Need " + effectiveLiquidity.toLocaleString() + " memescore"); return; }
     setCreating(true);
     setError(null);
     try {
       const { data, error: rpcErr } = await supabase.rpc('labs_create_mememarket', {
         p_user_id: memeUser.id || memeUser.user_id,
         p_meme_name: memeName.trim(),
-        p_trend_term: trendTerm.trim(),
+        p_trend_term: memeName.trim(),
         p_image_url: imageUrl.trim(),
         p_duration_hours: duration,
+        p_liquidity: effectiveLiquidity,
       });
       if (rpcErr) throw rpcErr;
       const result = typeof data === 'string' ? JSON.parse(data) : data;
@@ -2766,7 +2775,7 @@ const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLogi
           max_markets_reached: "Max 20 markets reached. Try again later.",
           duplicate_term: "A market for this term already exists!",
           user_not_found: "User not found. Try refreshing.",
-          insufficient_balance: "Not enough balance (need " + CREATION_FEE.toLocaleString() + ")",
+          insufficient_balance: "Not enough balance (need " + effectiveLiquidity.toLocaleString() + ")",
         };
         setError(msgs[result.error] || result.error);
         setCreating(false);
@@ -2777,10 +2786,10 @@ const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLogi
       // Reset
       setWizStep(1);
       setMemeName("");
-      setTrendTerm("");
       setImageUrl("");
       setDuration(72);
       setSearch("");
+      setLiquidity(100000);
     } catch (e) {
       setError(e.message || "Failed to create market");
     }
@@ -2838,13 +2847,13 @@ const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLogi
               }} />
             <div style={{ maxHeight: 200, overflow: "auto", marginBottom: 12 }}>
               {filteredWatchlist.map(w => (
-                <button key={w.term} onClick={() => selectMeme(w)} style={{
+                <button key={w.name} onClick={() => selectMeme(w)} style={{
                   display: "block", width: "100%", padding: "8px 12px", marginBottom: 4,
                   background: "#ffffff08", border: "1px solid #ffffff10", borderRadius: 8,
                   color: "#fff", cursor: "pointer", textAlign: "left",
                   fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
                 }}>
-                  {w.name} <span style={{ color: "#ffffff40", fontSize: ".8em" }}>({w.term})</span>
+                  {w.name}
                 </button>
               ))}
             </div>
@@ -2857,25 +2866,18 @@ const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLogi
                   fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
                   marginBottom: 6, boxSizing: "border-box"
                 }} />
-              <input value={trendTerm} onChange={e => setTrendTerm(e.target.value)}
-                placeholder="Google Trends term (e.g. doge meme)" style={{
-                  width: "100%", height: 32, borderRadius: 8, border: "1px solid #ffffff20",
-                  background: "#0c1018", color: "#fff", padding: "0 10px",
-                  fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
-                  marginBottom: 6, boxSizing: "border-box"
-                }} />
               <input value={imageUrl} onChange={e => setImageUrl(e.target.value)}
-                placeholder="Image URL (optional)" style={{
+                placeholder="Image URL" style={{
                   width: "100%", height: 32, borderRadius: 8, border: "1px solid #ffffff20",
                   background: "#0c1018", color: "#fff", padding: "0 10px",
                   fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
                   marginBottom: 8, boxSizing: "border-box"
                 }} />
-              <button onClick={selectCustom} disabled={!memeName.trim() || !trendTerm.trim()}
+              <button onClick={selectCustom} disabled={!memeName.trim() || !imageUrl.trim()}
                 style={{
                   width: "100%", height: 36, borderRadius: 10, border: "none",
-                  background: memeName.trim() && trendTerm.trim() ? "linear-gradient(135deg,#71BAFF,#4a90d9)" : "#ffffff15",
-                  color: "#fff", cursor: memeName.trim() && trendTerm.trim() ? "pointer" : "default",
+                  background: memeName.trim() && imageUrl.trim() ? "linear-gradient(135deg,#71BAFF,#4a90d9)" : "#ffffff15",
+                  color: "#fff", cursor: memeName.trim() && imageUrl.trim() ? "pointer" : "default",
                   fontFamily: "'Jersey 25',sans-serif", fontSize: "1em"
                 }}>NEXT</button>
             </div>
@@ -2918,40 +2920,59 @@ const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLogi
               <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em", marginBottom: 8 }}>
                 Will <span style={{ color: "#71BAFF" }}>{memeName}</span> trend UP in {duration === 24 ? "1 day" : duration === 72 ? "3 days" : "7 days"}?
               </div>
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#ffffff60" }}>
-                Term: {trendTerm}
-              </div>
               {imageUrl && (
                 <img src={imageUrl} alt="" style={{ width: 60, height: 60, borderRadius: 8, marginTop: 8, objectFit: "cover" }}
                   onError={e => { e.target.style.display = "none"; }} />
               )}
             </div>
-            <div style={{
-              display: "flex", justifyContent: "space-between", padding: "10px 0",
-              borderTop: "1px solid #ffffff10", fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
-            }}>
-              <span style={{ color: "#ffffff60" }}>Creation Fee</span>
-              <span style={gld}>{CREATION_FEE.toLocaleString()}</span>
+            <div style={{ borderTop: "1px solid #ffffff10", paddingTop: 12, marginBottom: 12 }}>
+              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", color: "#ffffff80", marginBottom: 8 }}>
+                Your Liquidity
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                {[100000, 250000, 500000].map(v => (
+                  <button key={v} onClick={() => setLiquidity(v)} style={{
+                    flex: 1, height: 34, borderRadius: 8,
+                    border: liquidity === v ? "2px solid #71BAFF" : "1px solid #ffffff15",
+                    background: liquidity === v ? "#71BAFF15" : "#ffffff08",
+                    color: liquidity === v ? "#71BAFF" : "#ffffff80",
+                    cursor: "pointer", fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
+                  }}>{v.toLocaleString()}</button>
+                ))}
+              </div>
+              <input type="number" value={liquidity} min={MIN_LIQUIDITY}
+                onChange={e => setLiquidity(Math.max(0, parseInt(e.target.value) || 0))}
+                style={{
+                  width: "100%", height: 34, borderRadius: 8, border: "1px solid #ffffff20",
+                  background: "#0c1018", color: "#fff", padding: "0 10px",
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em", outline: "none",
+                  boxSizing: "border-box", textAlign: "right"
+                }} />
+              {liquidity < MIN_LIQUIDITY && (
+                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em", color: "#ef4444", marginTop: 4 }}>
+                  Minimum: {MIN_LIQUIDITY.toLocaleString()}
+                </div>
+              )}
             </div>
             <div style={{
               display: "flex", justifyContent: "space-between", padding: "6px 0 12px",
               fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
             }}>
               <span style={{ color: "#ffffff60" }}>Your Balance</span>
-              <span style={{ color: bal >= CREATION_FEE ? "#22c55e" : "#ef4444" }}>{Math.round(bal).toLocaleString()}</span>
+              <span style={{ color: bal >= effectiveLiquidity ? "#22c55e" : "#ef4444" }}>{Math.round(bal).toLocaleString()}</span>
             </div>
             <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em", color: "#ffffff40", marginBottom: 10 }}>
-              Fee returned at resolution + 25% of market fees
+              You're the market maker. Your cost scales with how one-sided the result is — up to ~69% on obvious outcomes, near zero on contested ones. You earn 50% of all trading fees.
             </div>
             {error && <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#ef4444", marginBottom: 8 }}>{error}</div>}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setWizStep(2)}
                 style={{ flex: 1, height: 40, borderRadius: 12, border: "1px solid #ffffff20", background: "none", color: "#ffffff60", cursor: "pointer", fontFamily: "'Jersey 25',sans-serif" }}>BACK</button>
-              <button onClick={doCreate} disabled={creating || bal < CREATION_FEE}
+              <button onClick={doCreate} disabled={creating || bal < effectiveLiquidity}
                 style={{
                   flex: 2, height: 40, borderRadius: 12, border: "none",
-                  background: creating || bal < CREATION_FEE ? "#ffffff15" : "linear-gradient(135deg,#71BAFF,#4a90d9)",
-                  color: "#fff", cursor: creating || bal < CREATION_FEE ? "default" : "pointer",
+                  background: creating || bal < effectiveLiquidity ? "#ffffff15" : "linear-gradient(135deg,#71BAFF,#4a90d9)",
+                  color: "#fff", cursor: creating || bal < effectiveLiquidity ? "default" : "pointer",
                   fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em"
                 }}>{creating ? "Creating..." : "CREATE MARKET"}</button>
             </div>
@@ -4075,10 +4096,41 @@ function App() {
         const maxRound = dbMarkets.filter(db => (db.market_type || "UPDOWN") === "UPDOWN")
           .reduce((max, db) => { const rn = parseInt(db.id.split("-")[1]) || 0; return rn > max ? rn : max; }, 0);
         maxUpdownRound.current = maxRound;
-        // Auto-creation disabled — markets managed server-side
+        // Create missing UP/DOWN markets on init (DB trigger caps at 2)
+        const openSyms = new Set(
+          dbMarkets.filter(db => db.status === "OPEN" && (db.market_type || "UPDOWN") === "UPDOWN")
+            .map(db => db.coin_symbol)
+        );
         let needsRefetch = false;
-        // Battle markets are only created via auto-renew when the previous battle resolves
+        while (openSyms.size < NUM_UPDOWN_MARKETS) {
+          const sym = pickUpdownCoin(openSyms);
+          if (!sym) break;
+          const newM = mk(battleCoinMap[sym], ++maxUpdownRound.current);
+          localMks.push(newM);
+          syncMarketToDb(newM);
+          openSyms.add(sym);
+          needsRefetch = true;
+        }
+
+        // Create battle market if none exists (DB trigger caps at 1)
+        const hasOpenBattle = dbMarkets.some(db => db.status === "OPEN" && db.market_type === "BATTLE");
+        if (!hasOpenBattle && Object.keys(battleCoinMap).length >= 2) {
+          const matchup = pickBattleMatchup(battleCoinMap);
+          if (matchup) {
+            const [symA, symB] = matchup;
+            const highestBattle = dbMarkets
+              .filter(db => db.market_type === "BATTLE")
+              .reduce((max, db) => { const rn = parseInt(db.id.split("-").pop()) || 0; return rn > max ? rn : max; }, 0);
+            const battleM = mkBattle(battleCoinMap[symA], battleCoinMap[symB], highestBattle + 1);
+            localMks.push(battleM);
+            syncMarketToDb(battleM);
+            supabase.rpc("labs_insert_snapshot", { p_market_id: battleM.id, p_score_a: battleM.mc, p_score_b: battleM.mcB });
+            needsRefetch = true;
+          }
+        }
+
         setMks(dedup(localMks));
+
         // Re-fetch from DB to pick up markets that actually got created (trigger may reject some)
         if (needsRefetch) {
           setTimeout(async () => {
@@ -5063,7 +5115,8 @@ function App() {
                   const { data: freshHoldings } = await supabase.from("labs_user_inventory").select("tier").eq("user_id", userId.current);
                   const reward = calcHoldingsReward(freshHoldings, freshDh);
                   if (reward > 0) {
-                    await supabase.rpc('labs_claim_holdings_reward', { p_user_id: userId.current, p_reward: reward });
+                    const { error: rewardErr } = await supabase.rpc('labs_claim_holdings_reward', { p_user_id: userId.current, p_reward: reward });
+                    if (rewardErr) throw new Error("Reward failed: " + rewardErr.message);
                     setBal(b => b + reward);
                     setClaimReward(reward);
                     setTimeout(() => setClaimReward(0), 1800);
@@ -5724,10 +5777,11 @@ function App() {
                           const { data: freshHoldings } = await supabase.from("labs_user_inventory").select("tier").eq("user_id", userId.current);
                           const reward = calcHoldingsReward(freshHoldings, freshDh);
                           if (reward > 0) {
-                            await supabase.rpc('labs_claim_holdings_reward', {
+                            const { error: rewardErr } = await supabase.rpc('labs_claim_holdings_reward', {
                               p_user_id: userId.current,
                               p_reward: reward
                             });
+                            if (rewardErr) throw new Error("Reward failed: " + rewardErr.message);
                             setBal(b => b + reward);
                             setClaimReward(reward);
                             setTimeout(() => setClaimReward(0), 1800);

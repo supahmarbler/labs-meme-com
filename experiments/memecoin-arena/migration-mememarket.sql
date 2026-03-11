@@ -90,8 +90,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
--- 5. UPDATE labs_auto_resolve — add MEMEMARKET support + creator payout
+-- 5. UPDATE labs_auto_resolve — add MEMEMARKET support + LMSR subsidy creator payout
 -- ============================================================
+-- Creator payout uses information-theoretic subsidy:
+--   subsidy = b × (ln(2) - H(p_final))
+--   where H(p) = -p×ln(p) - (1-p)×ln(1-p)
+-- Balanced markets (50/50): subsidy=0, full refund.
+-- One-sided (90/10): subsidy≈36.8% of b.
+-- Max theoretical loss: ~69.3% of b (at p→0 or p→1).
+-- Creator refund = creation_fee - subsidy + 50% of fee_pool.
 
 CREATE OR REPLACE FUNCTION labs_auto_resolve()
 RETURNS void AS $$
@@ -104,6 +111,14 @@ DECLARE
   v_winner_weight_sum numeric;
   v_winner_invested_sum numeric;
   v_creator_bonus numeric;
+  v_b numeric;
+  v_qy numeric;
+  v_qn numeric;
+  v_total numeric;
+  v_p numeric;
+  v_entropy numeric;
+  v_subsidy numeric;
+  v_creator_refund numeric;
 BEGIN
   FOR m IN
     SELECT * FROM labs_markets
@@ -162,12 +177,37 @@ BEGIN
         winner_invested_sum = v_winner_invested_sum
     WHERE id = m.id;
 
-    -- MEMEMARKET creator payout: refund creation_fee + 25% of fee_pool
+    -- MEMEMARKET creator payout with LMSR subsidy
     IF m.market_type = 'MEMEMARKET' AND m.created_by IS NOT NULL AND COALESCE(m.creation_fee, 0) > 0 THEN
-      v_creator_bonus := ROUND(COALESCE(m.fee_pool, 0) * 0.25);
+      v_b := COALESCE(m.b, m.creation_fee);
+      v_qy := COALESCE(m.q_yes, 0) + v_b;
+      v_qn := COALESCE(m.q_no, 0) + v_b;
+      v_total := v_qy + v_qn;
+
+      -- Winning side probability
+      IF v_result = 'YES' THEN
+        v_p := v_qy / v_total;
+      ELSE
+        v_p := v_qn / v_total;
+      END IF;
+
+      -- Clamp to avoid ln(0)
+      v_p := GREATEST(0.001, LEAST(0.999, v_p));
+
+      -- Entropy: H(p) = -p*ln(p) - (1-p)*ln(1-p)
+      v_entropy := -(v_p * ln(v_p) + (1 - v_p) * ln(1 - v_p));
+
+      -- Subsidy: b * (ln(2) - H(p_final))
+      v_subsidy := ROUND(v_b * (ln(2::numeric) - v_entropy));
+      v_subsidy := GREATEST(0, LEAST(v_subsidy, m.creation_fee));
+
+      -- Creator refund = creation_fee - subsidy + 50% of fees
+      v_creator_bonus := ROUND(COALESCE(m.fee_pool, 0) * 0.50);
+      v_creator_refund := GREATEST(0, m.creation_fee - v_subsidy) + v_creator_bonus;
+
       PERFORM set_config('labs.allow_balance_write', 'true', true);
       UPDATE labs_users
-      SET labs_balance = labs_balance + m.creation_fee + v_creator_bonus,
+      SET labs_balance = labs_balance + v_creator_refund,
           updated_at = NOW()
       WHERE id = m.created_by;
       UPDATE labs_markets
@@ -188,7 +228,8 @@ CREATE OR REPLACE FUNCTION labs_create_mememarket(
   p_meme_name text,
   p_trend_term text,
   p_image_url text,
-  p_duration_hours int
+  p_duration_hours int,
+  p_liquidity numeric DEFAULT 100000
 ) RETURNS json AS $$
 DECLARE
   v_user labs_users%ROWTYPE;
@@ -196,7 +237,7 @@ DECLARE
   v_slug text;
   v_round int;
   v_expires_at timestamptz;
-  v_creation_fee numeric := 1000;
+  v_creation_fee numeric := GREATEST(p_liquidity, 100000);
   v_new_balance numeric;
   v_open_count int;
 BEGIN
@@ -274,7 +315,7 @@ BEGIN
     trim(p_meme_name), trim(p_meme_name), COALESCE(NULLIF(trim(p_image_url), ''), ''), '#71BAFF',
     trim(p_trend_term),
     50, 50,
-    0, 0, 50000,
+    0, 0, v_creation_fee,
     v_expires_at, 0, 0,
     0, 0, 0, 0,
     v_creation_fee, p_user_id, false,
@@ -304,4 +345,4 @@ CREATE INDEX IF NOT EXISTS idx_markets_mememarket_open
 -- 8. PERMISSIONS
 -- ============================================================
 
-GRANT EXECUTE ON FUNCTION labs_create_mememarket(text, text, text, text, int) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION labs_create_mememarket(text, text, text, text, int, numeric) TO anon, authenticated;
