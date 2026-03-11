@@ -683,6 +683,7 @@ const CG_PRO_API = "https://pro-api.coingecko.com/api/v3";
 const CG_PRO_KEY = "CG-PWFqjufsd6mZpoNsR62ukuiT";
 const CG_PRO_HEADERS = { "x-cg-pro-api-key": CG_PRO_KEY };
 let lastBattlePriceCall = 0;
+let lastMemeMarketTrendCall = 0;
 
 // --- On-demand per-user wallet census ---
 
@@ -2434,12 +2435,12 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
 
   const yp = yP(m.qY, m.qN, m.b);
   const np = 100 - yp;
-  const scoreChange = m.startMc > 0 && m.startMc !== 50 ? ((m.mc - m.startMc) / m.startMc * 100) : 0;
+  const scoreChange = m.startMc > 0 ? ((m.mc - m.startMc) / m.startMc * 100) : 0;
   const grossRf = pos ? sellShares(m.qY, m.qN, m.b, pos.sh, pos.side) : 0;
   const sellFee = pos && m.st === "OPEN" ? Math.round(grossRf * 0.02) : 0;
   const rf = grossRf - sellFee;
   const pnl = pos ? grossRf - pos.inv : 0;
-  const isInitializing = m.startMc === 50 && m.mc === 50;
+  const isInitializing = false;
 
   // Sparkline from snapshots
   const snaps = trendSnaps[m.id] || [];
@@ -2508,12 +2509,18 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
                 textShadow: "0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
                 lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis",
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical"
-              }}>{m.customTitle || `Will ${m.c.name} trend UP?`}</div>
-              <a href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.name)}&date=now%207-d`}
-                target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: ".65em", color: "#71BAFF", textDecoration: "none", fontFamily: "'Jersey 25',sans-serif" }}>
-                Google Trends
-              </a>
+              }}>{(() => {
+                const title = m.customTitle || `Will ${m.c.name} trend UP?`;
+                const name = m.c.name;
+                const idx = title.toLowerCase().indexOf(name.toLowerCase());
+                if (idx === -1) return title;
+                const trendsUrl = `https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || name)}&date=now%207-d`;
+                return <>
+                  {title.slice(0, idx)}
+                  <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration: "none" }}>{title.slice(idx, idx + name.length)}</a>
+                  {title.slice(idx + name.length)}
+                </>;
+              })()}</div>
             </div>
           </div>
           <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
@@ -2531,14 +2538,14 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
 
         {/* Score + position display */}
         <div style={{
-          display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10,
+          display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 8,
           flexWrap: "nowrap", overflow: "hidden"
         }}>
           {pos && !pos.claimed && (
             <>
               <div style={{ minWidth: 0, flexShrink: 1 }}>
-                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>YOUR BET</div>
-                <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", lineHeight: 1 }}>
+                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".55em", color: "#ffffff40", marginBottom: 1 }}>YOUR BET</div>
+                <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: ".95em", lineHeight: 1 }}>
                   <span style={{ color: pos.side === "YES" ? "#71baff" : "#a78bfa", whiteSpace: "nowrap" }}>
                     {grossRf.toLocaleString()} {pos.side === "YES" ? "UP" : "DOWN"}
                   </span>{" "}
@@ -2547,15 +2554,15 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
                   </span>
                 </div>
               </div>
-              <div style={{ width: 1, height: 36, background: "#ffffff20", flexShrink: 0 }}/>
+              <div style={{ width: 1, height: 32, background: "#ffffff20", flexShrink: 0 }}/>
             </>
           )}
           <div style={{ minWidth: 0, flexShrink: 1 }}>
-            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>TREND SCORE</div>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".55em", color: "#ffffff40", marginBottom: 1, whiteSpace: "nowrap" }}>TREND SCORE</div>
             {isInitializing ? (
-              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", color: "#f7931a", lineHeight: 1 }}>Initializing...</div>
+              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: ".95em", color: "#f7931a", lineHeight: 1 }}>Initializing...</div>
             ) : (
-              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", lineHeight: 1 }}>
+              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: ".95em", lineHeight: 1 }}>
                 <span style={{ ...gld, whiteSpace: "nowrap" }}>{Math.round(m.mc)}</span>{" "}
                 <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: scoreChange >= 0 ? "#4ade80" : "#f65e5e", whiteSpace: "nowrap" }}>
                   {scoreChange >= 0 ? "\u25B2" : "\u25BC"} {Math.abs(scoreChange).toFixed(1)}%
@@ -2565,17 +2572,17 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
           </div>
           {!isInitializing && (
             <>
-              <div style={{ width: 1, height: 36, background: "#ffffff20", flexShrink: 0 }}/>
+              <div style={{ width: 1, height: 32, background: "#ffffff20", flexShrink: 0 }}/>
               <div style={{ minWidth: 0, flexShrink: 1 }}>
-                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>START</div>
-                <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", color: "#94a3b8", whiteSpace: "nowrap", lineHeight: 1 }}>{Math.round(m.startMc)}</div>
+                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".55em", color: "#ffffff40", marginBottom: 1 }}>START</div>
+                <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: ".95em", color: "#94a3b8", whiteSpace: "nowrap", lineHeight: 1 }}>{Math.round(m.startMc)}</div>
               </div>
             </>
           )}
           {sparkPoints && (
             <>
-              <div style={{ width: 1, height: 36, background: "#ffffff20", flexShrink: 0 }}/>
-              <svg width="80" height="28" viewBox="0 0 120 28" style={{ flexShrink: 0, alignSelf: "center" }}>
+              <div style={{ width: 1, height: 32, background: "#ffffff20", flexShrink: 0 }}/>
+              <svg width="72" height="24" viewBox="0 0 120 28" style={{ flexShrink: 0, alignSelf: "center" }}>
                 <polyline points={sparkPoints} fill="none" stroke="#71BAFF" strokeWidth="1.5" strokeLinejoin="round" />
               </svg>
             </>
@@ -2765,29 +2772,41 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
         </div>
       </div>
 
-      {/* Footer — outside inner card, matches arena Card */}
+      {/* Footer */}
       <div style={{
         display: "flex", alignItems: "center", marginTop: 10,
         padding: "0 16px 0 14px", justifyContent: "space-between"
       }}>
         <div style={{ display: "flex", alignItems: "center", fontSize: ".75em", gap: 8 }}>
-          <span style={{
-            fontFamily: "'Jersey 25',sans-serif",
-            background: "linear-gradient(90deg, #71BAFF40, #4a90d940)",
-            padding: "2px 8px", borderRadius: 4, color: "#71BAFF"
-          }}>{durationLabel} MEMEMARKET</span>
-          {m.creationFee > 0 && (
-            <span style={{
-              fontFamily: "'Jersey 25',sans-serif",
-              background: "linear-gradient(90deg, #22c55e30, #16a34a20)",
-              padding: "2px 8px", borderRadius: 4, color: "#22c55e"
-            }}>{m.creationFee >= 1000 ? Math.round(m.creationFee / 1000) + "K" : m.creationFee} LIQ</span>
+          {players.length > 0 && marketPool(m.qY, m.qN, m.b) > 0 && (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              {players.slice(0, 3).map((p, i) => (
+                <div key={p.userId} style={{
+                  width: 24, height: 24, borderRadius: "50%", border: "2px solid #191f29",
+                  marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i,
+                  background: p.img ? `url(${p.img}) center/cover` : "linear-gradient(135deg,#4e596c,#212936)",
+                  position: "relative"
+                }}/>
+              ))}
+              {players.length > 3 && (
+                <span style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em",
+                  color: "#ffffff60", marginLeft: 4
+                }}>+{players.length - 3}</span>
+              )}
+            </div>
           )}
         </div>
-        {marketPool(m.qY, m.qN, m.b) > 0 && <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
-          <span style={{ color: "#ffffff30", marginRight: 4 }}></span>
-          <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
-        </span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em",
+            background: "linear-gradient(90deg, #71BAFF40, #4023C340)",
+            padding: "2px 6px", borderRadius: 4, color: "#ffffffcc"
+          }}>{durationLabel} GOOGLE TRENDS</span>
+          <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
+            <span style={gld}>{Math.round(costFn(m.qY, m.qN, m.b)).toLocaleString()}</span>
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -3984,7 +4003,7 @@ function App() {
     return () => clearInterval(id);
   }, [lastCensusAt]);
   const [pmMarkets, setPmMarkets] = useState([]);
-  const [activeTab, setActiveTab] = useState("arena");
+  const [activeTab, setActiveTab] = useState(() => window.location.pathname.includes("/mememarket") ? "mememarket" : "arena");
   const [showCreateMemeMarket, setShowCreateMemeMarket] = useState(false);
 
   // Refresh leaderboard, market history, and trade history from database
@@ -4454,7 +4473,7 @@ function App() {
 
     const updatePrices = async () => {
       // UPDOWN price feed (CG Pro — coins come from BATTLE_COINS pool)
-      const updownMarkets = mks.filter(m => m.st === "OPEN" && m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM");
+      const updownMarkets = mks.filter(m => m.st === "OPEN" && m.type !== "BATTLE" && m.type !== "TRENDS" && m.type !== "CUSTOM" && m.type !== "MEMEMARKET");
       if (updownMarkets.length > 0) {
         try {
           const cgIds = updownMarkets.map(m => BATTLE_COINS[m.c.sym]).filter(Boolean);
@@ -4534,6 +4553,39 @@ function App() {
         } catch (e) {
           console.warn("Battle CG Pro price fetch failed:", e);
         }
+      }
+
+      // MEMEMARKET trend score feed (every 5 min, via /api/trend-score)
+      const memeMarkets = mks.filter(m => m.st === "OPEN" && m.type === "MEMEMARKET");
+      if (memeMarkets.length > 0 && supabase && Date.now() - lastMemeMarketTrendCall >= 300000) {
+        for (const m of memeMarkets) {
+          try {
+            const term = m.trendTermA || m.c.name;
+            const res = await fetch(`/api/trend-score?term=${encodeURIComponent(term)}`);
+            if (res.ok) {
+              const { score } = await res.json();
+              if (typeof score === "number" && score >= 0) {
+                await supabase.rpc('labs_update_trend_score', {
+                  p_market_id: m.id,
+                  p_score: score
+                });
+                // Record snapshot (skip if unchanged)
+                const lastSnaps = trendSnapsRef.current?.[m.id];
+                const prev = lastSnaps && lastSnaps.length > 0 ? lastSnaps[lastSnaps.length - 1] : null;
+                if (!prev || Number(prev.score_a) !== score) {
+                  await supabase.rpc('labs_insert_snapshot', {
+                    p_market_id: m.id,
+                    p_score_a: score,
+                    p_score_b: 0
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("MemeMarket trend fetch failed for", m.id, e);
+          }
+        }
+        lastMemeMarketTrendCall = Date.now();
       }
     };
 
@@ -5045,15 +5097,6 @@ function App() {
           }}>MEME.COM</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button onClick={() => setActiveTab(activeTab === "arena" ? "mememarket" : "arena")} style={{
-            fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? ".75em" : ".85em",
-            padding: isMobile ? "6px 10px" : "7px 14px", borderRadius:10, cursor:"pointer",
-            border:"1px solid #f7931a40",
-            background: "linear-gradient(135deg, #f7931a20, #f7931a10)",
-            color:"#f7931a",
-            transition:"all .15s ease",
-            whiteSpace:"nowrap", flexShrink:0
-          }}>{activeTab === "arena" ? "MEMEMARKET MAKER" : "MEME ARENA"}</button>
           <button onClick={() => setShowHowTo(true)} style={{
             width:28, height:28, borderRadius:"50%", border:"1px solid #ffffff20",
             background:"#0c1018", color:"#94a3b8", cursor:"pointer",

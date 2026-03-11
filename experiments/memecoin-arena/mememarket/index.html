@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MemeMarket Maker — meme.com labs</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="https://meme.com/assets/images/fi_32x32.png"/>
+  <link rel="icon" type="image/png" sizes="128x128" href="https://meme.com/assets/images/fi_128x128.png"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="https://meme.com/assets/images/fi_192x192.png"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0c1018; overflow-x:hidden; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+    input[type=number] { -moz-appearance:textfield; }
+
+    .arena-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: stretch;
+    }
+    .arena-cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .arena-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    @keyframes diamondShimmer {
+      0%, 100% { left: -100%; }
+      50% { left: 100%; }
+    }
+    @keyframes diamondPulse {
+      0%, 100% { box-shadow: 0 0 10px rgba(185, 242, 255, 0.2), 0 0 30px rgba(185, 242, 255, 0.08); }
+      50% { box-shadow: 0 0 16px rgba(185, 242, 255, 0.35), 0 0 40px rgba(185, 242, 255, 0.15); }
+    }
+    @keyframes xpShineSweep {
+      0% { left: -60%; }
+      100% { left: 160%; }
+    }
+    @keyframes overlayFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes panelSlideIn {
+      from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+      to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+
+    @media (min-width: 1000px) {
+      .arena-layout {
+        display: grid;
+        grid-template-columns: 1fr 20em;
+        align-items: start;
+      }
+      .arena-cards {
+        grid-template-columns: repeat(auto-fill, minmax(17em, 1fr));
+        gap: 16px;
+      }
+      .arena-sidebar {
+        position: sticky;
+        top: 60px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" src="../app.jsx?v=20260311m"></script>
+  <script type="text/babel">
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
