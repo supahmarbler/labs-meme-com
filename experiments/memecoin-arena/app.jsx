@@ -2758,7 +2758,7 @@ const MemeMarketCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLogi
     setError(null);
     try {
       const { data, error: rpcErr } = await supabase.rpc('labs_create_mememarket', {
-        p_user_id: memeUser.id || memeUser.user_id,
+        p_user_id: memeUser.id,
         p_meme_name: memeName.trim(),
         p_trend_term: memeName.trim(),
         p_image_url: imageUrl.trim(),
@@ -5555,7 +5555,7 @@ function App() {
         show={showCreateMemeMarket}
         onClose={() => setShowCreateMemeMarket(false)}
         bal={bal}
-        memeUser={memeUser ? { id: userId.current, ...memeUser } : null}
+        memeUser={memeUser ? { ...memeUser, id: userId.current } : null}
         onLoginRequired={() => setShowDeposit(true)}
         onCreated={(result) => {
           setBal(result.new_balance);
