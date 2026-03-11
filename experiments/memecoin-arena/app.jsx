@@ -2105,7 +2105,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8
             }}>
               {(() => {
-                const trendsUrl = m.type === "TRENDS" ? `https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.sym)},${encodeURIComponent(m.trendTermB || m.cB?.sym)}&date=today+1-m` : null;
+                const trendsUrl = m.type === "TRENDS" ? `https://trends.google.com/trends/explore?q=${encodeURIComponent(m.trendTermA || m.c.sym)},${encodeURIComponent(m.trendTermB || m.cB?.sym)}&date=now+7-d` : null;
                 return <>
                   {m.type === "TRENDS"
                     ? <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#64B5F6", textDecoration: "none" }}>{m.c.sym}</a>
@@ -2489,8 +2489,8 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
         justifyContent: "space-between"
       }}>
         {/* Header: image + title + countdown */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 10, gap: 10, justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12, gap: 11, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flex: 1 }}>
             {m.c.img && (
               <div style={{
                 width: 40, height: 40, borderRadius: 12, flexShrink: 0, overflow: "hidden",
@@ -2503,7 +2503,9 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
             )}
             <div>
               <div style={{
-                fontFamily: "'Londrina Solid',sans-serif", fontSize: ".95em",
+                fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em",
+                textTransform: "uppercase",
+                textShadow: "0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
                 lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis",
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical"
               }}>{m.customTitle || `Will ${m.c.name} trend UP?`}</div>
@@ -2527,160 +2529,265 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
           </div>
         </div>
 
-        {/* Score display + sparkline */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "6px 10px", background: "#0c101820", borderRadius: 8 }}>
-          <div>
-            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40" }}>TREND SCORE</div>
+        {/* Score + position display */}
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10,
+          flexWrap: "nowrap", overflow: "hidden"
+        }}>
+          {pos && !pos.claimed && (
+            <>
+              <div style={{ minWidth: 0, flexShrink: 1 }}>
+                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>YOUR BET</div>
+                <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", lineHeight: 1 }}>
+                  <span style={{ color: pos.side === "YES" ? "#71baff" : "#a78bfa", whiteSpace: "nowrap" }}>
+                    {grossRf.toLocaleString()} {pos.side === "YES" ? "UP" : "DOWN"}
+                  </span>{" "}
+                  <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: pnl >= 0 ? "#4ade80" : "#f65e5e", whiteSpace: "nowrap" }}>
+                    {pnl >= 0 ? "\u25B2" : "\u25BC"} {pnl >= 0 ? "+" : ""}{pnl.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div style={{ width: 1, height: 36, background: "#ffffff20", flexShrink: 0 }}/>
+            </>
+          )}
+          <div style={{ minWidth: 0, flexShrink: 1 }}>
+            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>TREND SCORE</div>
             {isInitializing ? (
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", color: "#f7931a" }}>Initializing...</div>
+              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", color: "#f7931a", lineHeight: 1 }}>Initializing...</div>
             ) : (
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: "1em" }}>
-                <span style={{ color: "#ffffff60" }}>{Math.round(m.startMc)}</span>
-                <span style={{ color: "#ffffff30", margin: "0 4px" }}>&rarr;</span>
-                <span style={{ color: scoreChange >= 0 ? "#22c55e" : "#ef4444", fontWeight: "bold" }}>{Math.round(m.mc)}</span>
-                <span style={{ fontSize: ".8em", color: scoreChange >= 0 ? "#22c55e80" : "#ef444480", marginLeft: 4 }}>
-                  {scoreChange >= 0 ? "+" : ""}{scoreChange.toFixed(1)}%
+              <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", lineHeight: 1 }}>
+                <span style={{ ...gld, whiteSpace: "nowrap" }}>{Math.round(m.mc)}</span>{" "}
+                <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: scoreChange >= 0 ? "#4ade80" : "#f65e5e", whiteSpace: "nowrap" }}>
+                  {scoreChange >= 0 ? "\u25B2" : "\u25BC"} {Math.abs(scoreChange).toFixed(1)}%
                 </span>
               </div>
             )}
           </div>
+          {!isInitializing && (
+            <>
+              <div style={{ width: 1, height: 36, background: "#ffffff20", flexShrink: 0 }}/>
+              <div style={{ minWidth: 0, flexShrink: 1 }}>
+                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>START</div>
+                <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.05em", color: "#94a3b8", whiteSpace: "nowrap", lineHeight: 1 }}>{Math.round(m.startMc)}</div>
+              </div>
+            </>
+          )}
           {sparkPoints && (
-            <svg width="120" height="28" viewBox="0 0 120 28" style={{ flexShrink: 0 }}>
-              <polyline points={sparkPoints} fill="none" stroke="#71BAFF" strokeWidth="1.5" strokeLinejoin="round" />
-            </svg>
+            <>
+              <div style={{ width: 1, height: 36, background: "#ffffff20", flexShrink: 0 }}/>
+              <svg width="80" height="28" viewBox="0 0 120 28" style={{ flexShrink: 0, alignSelf: "center" }}>
+                <polyline points={sparkPoints} fill="none" stroke="#71BAFF" strokeWidth="1.5" strokeLinejoin="round" />
+              </svg>
+            </>
           )}
         </div>
 
-        {/* Bet display */}
-        {pos && !pos.claimed && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "nowrap", overflow: "hidden" }}>
-            <div style={{ minWidth: 0, flexShrink: 1 }}>
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>YOUR BET</div>
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
-                <span style={{ color: pos.side === "YES" ? "#22c55e" : "#ef4444" }}>
-                  {pos.side === "YES" ? "UP" : "DOWN"}
-                </span>
-                <span style={{ color: "#ffffff40", margin: "0 4px" }}>|</span>
-                <span style={gld}>{Math.round(pos.inv).toLocaleString()}</span>
-              </div>
-            </div>
-            <div style={{ minWidth: 0, flexShrink: 1, marginLeft: "auto" }}>
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".6em", color: "#ffffff40", marginBottom: 2 }}>VALUE</div>
-              <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
-                <span style={gld}>{Math.round(rf).toLocaleString()}</span>
-                <span style={{ fontSize: ".8em", color: pnl >= 0 ? "#22c55e80" : "#ef444480", marginLeft: 4 }}>
-                  {pnl >= 0 ? "+" : ""}{Math.round(pnl).toLocaleString()}
-                </span>
-              </div>
-            </div>
+        {/* Probability bar — matches arena Card style */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: ".75em", fontFamily: "'Jersey 25',sans-serif", minWidth: 28, textAlign: "center" }}>{yp}%</span>
+          <div style={{
+            flex: 1, height: 12, borderRadius: 62,
+            border: "1px solid #ffffff4d", overflow: "hidden", position: "relative"
+          }}>
+            <div style={{
+              position: "absolute", top: 2, bottom: 2, left: 2,
+              width: "calc(" + yp + "% - 2px)",
+              background: "linear-gradient(270deg,#FFFAC0 4%,#AED8FF 25%,#71BAFF 62%)",
+              borderRadius: "62px 0 0 62px"
+            }}/>
+            <div style={{
+              position: "absolute", top: 2, bottom: 2, right: 2, left: yp + "%",
+              background: "linear-gradient(90deg,#8398FF 25%,#4023C3 62%)",
+              borderRadius: "0 62px 62px 0"
+            }}/>
           </div>
-        )}
-
-        {/* Probability bar */}
-        <div style={{ display: "flex", height: 22, borderRadius: 8, overflow: "hidden", marginBottom: 10, fontSize: ".75em", fontFamily: "'Jersey 25',sans-serif" }}>
-          <div style={{ width: yp + "%", background: "linear-gradient(90deg, #22c55e, #16a34a)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", minWidth: yp > 8 ? undefined : 0 }}>
-            {yp > 8 && `UP ${Math.round(yp)}%`}
-          </div>
-          <div style={{ width: np + "%", background: "linear-gradient(90deg, #dc2626, #ef4444)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", minWidth: np > 8 ? undefined : 0 }}>
-            {np > 8 && `DOWN ${Math.round(np)}%`}
-          </div>
+          <span style={{ fontSize: ".75em", fontFamily: "'Jersey 25',sans-serif", minWidth: 28, textAlign: "center" }}>{np}%</span>
         </div>
 
-        {/* Action buttons */}
-        {step === "sel" && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}
-              style={{ ...bx, background: "linear-gradient(135deg,#22c55e,#16a34a)" }}>BET UP</button>
-            <button onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}
-              style={{ ...bx, background: "linear-gradient(135deg,#ef4444,#dc2626)" }}>BET DOWN</button>
-          </div>
-        )}
-        {step === "amt" && (
-          <div>
-            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", marginBottom: 4 }}>
-              Amount ({side === "YES" ? "UP" : "DOWN"})
-            </div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              {[100, 500, 1000].map(v => (
-                <button key={v} onClick={() => setAmt(String(Math.min(v, bal)))}
-                  style={{ ...bx, height: 30, fontSize: ".85em", background: amt === String(v) ? "#ffffff30" : "#ffffff10", borderRadius: 8, flex: 1 }}>
-                  {v.toLocaleString()}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input type="number" value={amt} onChange={e => setAmt(e.target.value)}
-                placeholder="Custom" style={{
-                  flex: 1, height: 36, borderRadius: 10, border: "1px solid #ffffff20",
-                  background: "#0c1018", color: "#fff", padding: "0 10px",
-                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none"
-                }} />
-              <button onClick={doBuy}
-                style={{ ...bx, width: 80, background: side === "YES" ? "linear-gradient(135deg,#22c55e,#16a34a)" : "linear-gradient(135deg,#ef4444,#dc2626)" }}>BET</button>
-            </div>
-            <button onClick={() => { setStep("sel"); setSide(null); setAmt(""); }}
-              style={{ background: "none", border: "none", color: "#ffffff40", cursor: "pointer", fontSize: ".7em", fontFamily: "'Jersey 25',sans-serif", marginTop: 4 }}>Cancel</button>
-          </div>
-        )}
-        {step === "pos" && pos && (
-          <div>
-            <button onClick={() => setStep("sellConfirm")}
-              style={{ ...bx, background: "#ffffff10", marginBottom: 4 }}>
-              SELL ({Math.round(rf).toLocaleString()})
-            </button>
-          </div>
-        )}
-        {step === "sellConfirm" && pos && (
-          <div>
-            <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", marginBottom: 6, textAlign: "center" }}>
-              Sell for {Math.round(rf).toLocaleString()} ({pnl >= 0 ? "+" : ""}{Math.round(pnl).toLocaleString()} PnL)?{sellFee > 0 && ` Fee: ${sellFee}`}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setStep("pos")}
-                style={{ ...bx, background: "#ffffff10" }}>CANCEL</button>
-              <button onClick={() => { onSell(m.id); setStep("sel"); }}
-                style={{ ...bx, background: "linear-gradient(135deg,#f7931a,#e8720c)" }}>CONFIRM SELL</button>
-            </div>
-          </div>
-        )}
-        {step === "res" && pos && (
-          <div>
-            {m.res === pos.side ? (
-              <button onClick={() => onClaim(m.id)}
-                style={{ ...bx, background: "linear-gradient(135deg,#22c55e,#16a34a)", animation: "claimPop .4s ease-out, claimGlow 2s ease-in-out" }}>
-                CLAIM {Math.round(pos.sh).toLocaleString()}
+        {/* Action buttons — matches arena Card style */}
+        <div style={{ minHeight: 48 }}>
+          {step === "sel" && m.st === "OPEN" && !pos && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={{ ...bx, background: "#71baff8a", opacity: yp < 1 ? 0.3 : 1 }}
+                disabled={yp < 1}
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("YES"); setStep("amt"); }}>
+                UP {yp < 1 ? "(locked)" : ""}
               </button>
-            ) : (
-              <button onClick={() => onClaim(m.id)}
-                style={{ ...bx, background: "#ffffff10", color: "#ffffff60" }}>
-                YOU LOST. CLOSE.
+              <button style={{ ...bx, background: "#234bc29e", border: "2px solid #c8dbff52", opacity: np < 1 ? 0.3 : 1 }}
+                disabled={np < 1}
+                onClick={() => { if (!memeUser) { onLoginRequired(); return; } setSide("NO"); setStep("amt"); }}>
+                DOWN {np < 1 ? "(locked)" : ""}
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+          {step === "sel" && m.st === "OPEN" && pos && !pos.claimed && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={{ ...bx, background: "#71baff" }}
+                onClick={() => { setSide(pos.side); setStep("amt"); }}>
+                ADD MORE {pos.side === "YES" ? "UP" : "DOWN"}
+              </button>
+              <button style={{ ...bx, background: "#71baff8a" }}
+                onClick={() => setStep("sellConfirm")}>
+                SELL
+              </button>
+            </div>
+          )}
 
-        {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, fontSize: ".75em" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {step === "amt" && (() => {
+            const floorMax = maxBetForFloor(m.qY, m.qN, m.b, side);
+            const effectiveMax = Math.min(bal, floorMax);
+            const isFloorLimited = floorMax < bal;
+            return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{
+                display: "flex", justifyContent: "flex-end", alignItems: "center",
+                fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", gap: 8
+              }}>
+                {isFloorLimited && <span style={{ color: "#f7931a" }}>MAX: {effectiveMax.toLocaleString()}</span>}
+                <span style={gld}>BAL: {bal.toLocaleString()}</span>
+              </div>
+              <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
+                value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
+                style={{
+                  height: 42, border: "1px solid #4c5159", borderRadius: 15,
+                  textAlign: "center", color: "#fff", background: "transparent",
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none",
+                  width: "100%"
+                }}/>
+              <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                {[10, 25, 50, 100].map(p =>
+                  <button key={p}
+                    onClick={() => setAmt(String(Math.floor(effectiveMax * p / 100)))}
+                    style={{
+                      flex: 1, padding: "4px 0", borderRadius: 8,
+                      fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
+                      background: "#00000042", border: "1px solid #ffffff15",
+                      color: "#ffffff80", cursor: "pointer"
+                    }}>{p}%</button>
+                )}
+              </div>
+              {amt && parseInt(amt) > 0 && (() => {
+                const a = parseInt(amt);
+                const net = a - Math.round(a * 0.02);
+                const feeStr = net.toLocaleString() + " after 2% fee";
+                if (net <= 0) return (
+                  <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", textAlign: "center", marginBottom: 2 }}>{feeStr}</div>
+                );
+                const sh = buyShares(m.qY, m.qN, m.b, net, side);
+                if (sh <= 0) return (
+                  <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", textAlign: "center", marginBottom: 2 }}>{feeStr}</div>
+                );
+                const payout = sh;
+                const multRaw = payout / net;
+                const mult = multRaw < 2 ? multRaw.toFixed(2) : multRaw.toFixed(1);
+                return (
+                  <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff60", textAlign: "center", marginBottom: 2 }}>
+                    {feeStr} / ~{mult}x if {side === "YES" ? "UP" : "DOWN"} wins
+                  </div>
+                );
+              })()}
+              {isFloorLimited && parseInt(amt) > effectiveMax && (
+                <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em", color: "#f7931a", textAlign: "center", marginBottom: 2 }}>
+                  Max bet {effectiveMax.toLocaleString()} (odds limit)
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button style={{ ...bx, background: "#00000042", flex: "0 0 40px" }}
+                  onClick={() => { setStep("sel"); setSide(null); setAmt(""); }}>
+                  X
+                </button>
+                <button
+                  style={{ ...bx, flex: "1 1 auto", background: side === "YES" ? "#71baff8a" : "#234bc29e" }}
+                  onClick={doBuy}
+                  disabled={!amt || parseInt(amt) <= 0 || parseInt(amt) > effectiveMax}>
+                  BET {side === "YES" ? "UP" : "DOWN"} {amt ? "(" + parseInt(amt).toLocaleString() + ")" : ""}
+                </button>
+              </div>
+            </div>
+          );})()}
+
+          {step === "pos" && pos && m.st === "OPEN" && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={{ ...bx, background: "#71baff" }}
+                onClick={() => { setSide(pos.side); setStep("amt"); }}>
+                ADD MORE {pos.side === "YES" ? "UP" : "DOWN"}
+              </button>
+              <button style={{ ...bx, background: "#71baff8a" }}
+                onClick={() => setStep("sellConfirm")}>
+                SELL
+              </button>
+            </div>
+          )}
+
+          {step === "sellConfirm" && pos && m.st === "OPEN" && (() => {
+            const grossRf2 = sellShares(m.qY, m.qN, m.b, pos.sh, pos.side);
+            const netRf = grossRf2 - Math.round(grossRf2 * 0.02);
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{
+                  fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", textAlign: "center",
+                  color: "#fff", background: "#242a35", borderRadius: 8, padding: "8px 12px"
+                }}>YOU WILL WITHDRAW 100% OF YOUR CURRENT POSITION.</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button style={{ ...bx, background: "#00000042", flex: "0 0 50px" }}
+                    onClick={() => setStep("pos")}>{"\u2715"}</button>
+                  <button style={{ ...bx, background: "#71baff8a", flex: 1 }}
+                    onClick={() => { setStep("pos"); onSell(m.id); }}>
+                    WITHDRAW TO GET {netRf.toLocaleString()}P
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {step === "res" && (() => {
+            const won = pos && m.res === pos.side;
+            const baseReward = won ? Math.round(pos.sh) : 0;
+            return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {pos && !pos.claimed && (
+                <button
+                  style={{ ...bx, background: won ? "#71baff" : "#f65e5e30" }}
+                  onClick={() => onClaim(m.id)}>
+                  {won
+                    ? "CLAIM " + baseReward.toLocaleString()
+                    : "YOU LOST. CLOSE."}
+                </button>
+              )}
+              {pos && pos.claimed && (
+                <div style={{
+                  fontFamily: "'Jersey 25',sans-serif", textAlign: "center", padding: 8
+                }}>CLAIMED</div>
+              )}
+            </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Footer — outside inner card, matches arena Card */}
+      <div style={{
+        display: "flex", alignItems: "center", marginTop: 10,
+        padding: "0 16px 0 14px", justifyContent: "space-between"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", fontSize: ".75em", gap: 8 }}>
+          <span style={{
+            fontFamily: "'Jersey 25',sans-serif",
+            background: "linear-gradient(90deg, #71BAFF40, #4a90d940)",
+            padding: "2px 8px", borderRadius: 4, color: "#71BAFF"
+          }}>{durationLabel} MEMEMARKET</span>
+          {m.creationFee > 0 && (
             <span style={{
               fontFamily: "'Jersey 25',sans-serif",
-              background: "linear-gradient(90deg, #71BAFF40, #4a90d940)",
-              padding: "2px 8px", borderRadius: 4, color: "#71BAFF"
-            }}>{durationLabel} MEMEMARKET</span>
-            {m.creationFee > 0 && (
-              <span style={{
-                fontFamily: "'Jersey 25',sans-serif",
-                background: "linear-gradient(90deg, #22c55e30, #16a34a20)",
-                padding: "2px 8px", borderRadius: 4, color: "#22c55e"
-              }}>{m.creationFee >= 1000 ? Math.round(m.creationFee / 1000) + "K" : m.creationFee} LIQ</span>
-            )}
-          </div>
-          {marketPool(m.qY, m.qN, m.b) > 0 && (
-            <span style={{ fontFamily: "'Jersey 25',sans-serif" }}>
-              <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
-            </span>
+              background: "linear-gradient(90deg, #22c55e30, #16a34a20)",
+              padding: "2px 8px", borderRadius: 4, color: "#22c55e"
+            }}>{m.creationFee >= 1000 ? Math.round(m.creationFee / 1000) + "K" : m.creationFee} LIQ</span>
           )}
         </div>
+        {marketPool(m.qY, m.qN, m.b) > 0 && <span style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em" }}>
+          <span style={{ color: "#ffffff30", marginRight: 4 }}></span>
+          <span style={gld}>{marketPool(m.qY, m.qN, m.b).toLocaleString()}</span>
+        </span>}
       </div>
     </div>
   );
@@ -4938,6 +5045,15 @@ function App() {
           }}>MEME.COM</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button onClick={() => setActiveTab(activeTab === "arena" ? "mememarket" : "arena")} style={{
+            fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? ".75em" : ".85em",
+            padding: isMobile ? "6px 10px" : "7px 14px", borderRadius:10, cursor:"pointer",
+            border:"1px solid #f7931a40",
+            background: "linear-gradient(135deg, #f7931a20, #f7931a10)",
+            color:"#f7931a",
+            transition:"all .15s ease",
+            whiteSpace:"nowrap", flexShrink:0
+          }}>{activeTab === "arena" ? "MEMEMARKET MAKER" : "MEME ARENA"}</button>
           <button onClick={() => setShowHowTo(true)} style={{
             width:28, height:28, borderRadius:"50%", border:"1px solid #ffffff20",
             background:"#0c1018", color:"#94a3b8", cursor:"pointer",
@@ -4995,7 +5111,7 @@ function App() {
           <div style={{
             fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? "1.3em" : "1.6em",
             textTransform:"uppercase", textShadow:"0 2px 4px rgba(0,0,0,.5)"
-          }}>{activeTab === "arena" ? "Meme Arena" : "MemeMarket"}{!isProd && <span style={{
+          }}>{activeTab === "arena" ? "Meme Arena" : "MemeMarket Maker"}{!isProd && <span style={{
             fontSize:".45em", background:"#ff4444", color:"#fff", padding:"2px 8px",
             borderRadius:4, marginLeft:10, verticalAlign:"middle", letterSpacing:1
           }}>DEV</span>}</div>
@@ -5003,20 +5119,8 @@ function App() {
             fontFamily:"'Jersey 25',sans-serif", fontSize: isMobile ? ".75em" : ".9em",
             color:"#ffffff60"
           }}>
-            {activeTab === "arena" ? "Predict targets. Vote with conviction on your favorite memes." : "Create prediction markets on meme virality via Google Trends."}
+            {activeTab === "arena" ? "Predict targets. Vote with conviction on your favorite memes." : "Create & fund prediction markets. Earn fees from every trade."}
           </div>
-          {/* Tab bar — MemeMarket only visible to supahmarbler */}
-          {memeUser?.username === "supahmarbler" && <div style={{ display:"flex", gap:8, marginTop:10 }}>
-            {[{id:"arena",label:"Meme Arena"},{id:"mememarket",label:"MemeMarket"}].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-                fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? ".85em" : ".95em",
-                padding:"6px 16px", borderRadius:10, cursor:"pointer", border:"none",
-                background: activeTab === tab.id ? "linear-gradient(135deg,#71BAFF,#4a90d9)" : "#ffffff10",
-                color: activeTab === tab.id ? "#fff" : "#ffffff60",
-                transition:"all .15s ease"
-              }}>{tab.label}</button>
-            ))}
-          </div>}
         </div>
 
         {activeTab === "arena" && <div style={{
@@ -5557,11 +5661,17 @@ function App() {
         bal={bal}
         memeUser={memeUser ? { ...memeUser, id: userId.current } : null}
         onLoginRequired={() => setShowDeposit(true)}
-        onCreated={(result) => {
+        onCreated={async (result) => {
           setBal(result.new_balance);
           setActiveTab("mememarket");
-          // Trigger market refresh by updating lastUpdate
-          setLastUpdate(new Date());
+          // Fetch the newly created market from DB and add to local state immediately
+          const { data: newRow } = await supabase.from('labs_markets').select('*').eq('id', result.market_id).single();
+          if (newRow) {
+            setMks(prev => {
+              if (prev.some(m => m.id === newRow.id)) return prev;
+              return [...prev, dbMarketToLocal(newRow, null, null)];
+            });
+          }
         }}
       />
 
