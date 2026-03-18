@@ -1,0 +1,33 @@
+name: On-Chain Census
+
+on:
+  schedule:
+    - cron: "0 12 */3 * *" # Every 3 days at noon UTC
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: census
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: census/package-lock.json
+
+      - run: npm ci
+
+      - name: Run census
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          EVM_RPC_URL: ${{ secrets.EVM_RPC_URL }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          MEME_DB_URL: ${{ secrets.MEME_DB_URL }}
+        run: node run-census.js

@@ -57,13 +57,23 @@ lmsr_sell_refund(q_yes, q_no, b, shares, side) -> numeric
 ## Key Files
 ```
 experiments/memecoin-arena/
-├── index.html              # Entry point
-├── app.jsx                 # All React code (~1400 lines)
-├── supabase-schema.sql     # Base schema
-├── migration-pending.sql   # Stats migration
-├── migration-production.sql # Atomic functions
-├── STATUS.md               # Detailed status doc
-└── CLAUDE.md               # This file
+├── index.html                  # Entry point
+├── app.jsx                     # All React code (~5000 lines)
+├── supabase-schema.sql         # Base schema
+├── migration-pending.sql       # Stats migration
+├── migration-production.sql    # Atomic functions
+├── migration-mememarket.sql    # KYMRACE schema + RPCs
+├── STATUS.md                   # Status doc (outdated)
+└── CLAUDE.md                   # This file
+
+api/
+├── kym-trending.js             # KYM meme scraper (4 sources)
+├── kym-index.js                # Market creation indexer (cron)
+├── kym-rss-check.js            # RSS monitor: winner/poll detection + dedup guard
+├── kym-resolve.js              # Market resolution (cron)
+├── kym-poll-sync.js            # Poll sync: finalist markets + image fetch + non-finalist resolution
+├── kym-winner.js               # MOTM winner detection
+└── kym-nominees.js             # MOTM nominee scraper
 ```
 
 ## app.jsx Structure (~1950 lines)
@@ -304,6 +314,137 @@ curl -s "https://vnteehkwrygodkljfwyp.supabase.co/rest/v1/labs_markets?select=*"
 - Reward amount from `quest.reward_meme_score` (not from params)
 - Backend verifies actual retweet via Twitter API using user's OAuth token
 - `claim_retweet_reward_points` expects `tweet_id_internal` (snake_case, not camelCase)
+
+## KYMRACE — KYM Meme of the Month Predictions
+
+### Overview
+Users predict which memes will finish top 3 in Know Your Meme's monthly "Meme of the Month" contest. Markets use LMSR pricing (same as coin markets) with YES = "TOP 3" and NO = "NOT TOP 3". Markets expire on the 15th of the following month, giving time for KYM to announce results.
+
+### How It Works
+1. **Scraper** discovers trending memes from KYM daily
+2. **Indexer** creates prediction markets for each meme
+3. Users trade YES/NO on whether each meme will finish top 3
+4. **Resolver** checks KYM results and settles all markets for the season
+
+### API Endpoints (Vercel Serverless Functions)
+
+| Endpoint | Cron | Purpose |
+|----------|------|---------|
+| `GET /api/kym-trending` | — | Scrapes KYM for trending memes, returns `{ memes, count, sources }` |
+| `GET /api/kym-index` | Every 6h | Calls kym-trending, creates KYMRACE markets for top 30 memes |
+| `GET /api/kym-rss-check` | Hourly, days 1-10 + 24-31 | Polls KYM RSS for winner/poll articles, triggers resolve or poll-sync. Skips if no open markets (prevents ~240 wasted calls/month) |
+| `GET /api/kym-resolve` | 12:00 UTC, days 1-15 | Resolves previous month's markets using kym-winner |
+| `GET /api/kym-poll-sync` | rss-check + days 26-28 fallback | Syncs finalist markets with KYM poll. Creates missing markets (with images from og:image), resolves non-finalists as NO |
+| `GET /api/kym-winner?month=X&year=Y` | — | Detects MOTM winner + top 3 from KYM voting page |
+| `GET /api/kym-nominees?month=X&year=Y` | — | Scrapes MOTM nominee list from KYM voting page |
+
+### KYM Trending Scraper (`api/kym-trending.js`)
+
+Scrapes 4 sources in order, deduplicating by slug:
+
+1. **Homepage** (`knowyourmeme.com`) — editorially featured memes in hero cards and sidebar
+2. **Newest** (`/memes?sort=newest`) — recently created meme entries
+3. **Confirmed** (`/memes?status=confirmed&sort=newest`) — entries with "confirmed" status (higher quality signal)
+4. **Editorials** (`/editorials`) — scrapes "What Is X Meme?" explainer articles, follows redirects to `trending.knowyourmeme.com`, extracts `/memes/SLUG` links from article bodies (up to 8 articles, 3 memes per article)
+
+**Page fetching:** Uses Cloudflare Browser Rendering API (`CF_ACCOUNT_ID` + `CF_API_TOKEN` env vars) for listing pages (avoids JS-rendering issues). Falls back to direct `fetch` when Cloudflare unavailable. Editorial article fetches skip Cloudflare (need redirect following).
+
+**Meme extraction patterns** (3 levels of specificity):
+- Pattern 1: `<a class="item" data-title="..." href="/memes/SLUG">` — listing page cards
+- Pattern 2: `<a class="overlayed-card" href="/memes/SLUG">` — homepage featured cards
+- Pattern 3: Any `href="/memes/SLUG"` link — fallback, derives name from nearby text or slug
+
+**Filtering:** `EXCLUDE_SLUGS` set filters out:
+- Navigation slugs (`trending`, `popular`, `search`, `categories`, etc.)
+- Evergreen classics (`loss`, `doge`, `trollface`, `big-chungus`, etc.)
+- Meta categories (`copypasta`, `reaction-images`, `gif`, `anime-manga`, etc.)
+- Platform names (`tiktok`, `youtube`, `reddit`, etc.)
+
+**Image handling:** All KYM CDN image URLs are upgraded from `/icons/newsfeed/` (tiny thumbnails) to `/icons/original/` (full resolution).
+
+### Indexer (`api/kym-index.js`)
+
+- Runs every 6 hours via Vercel cron
+- Days 1-25: fetches `/api/kym-trending`, takes top 30 memes, calls `labs_create_kymrace_system` RPC for each
+- Days 26-31: skips (market creation window closed for the month)
+- Duplicate memes silently skipped by the RPC (dedup on `kym_slug + season_id`)
+
+### Resolver (`api/kym-resolve.js`)
+
+- Runs daily at 12:00 UTC on days 1-15 of each month
+- Checks for open KYMRACE markets from **previous** month's season
+- Calls `/api/kym-winner` to get top 3 slugs
+- Calls `labs_resolve_kymrace(p_season_id, p_top3_slugs)` RPC — slug in top 3 → YES wins, otherwise → NO wins
+- Creator payout bonus for user-created markets (not SYSTEM-created)
+
+### RSS Check (`api/kym-rss-check.js`)
+
+- Polls `knowyourmeme.com/editorials.rss` for MOTM articles
+- Detects two types: winner announcement (previous month) and voting poll (current month)
+- **Dedup guard:** Before triggering downstream endpoints, queries Supabase for open KYMRACE markets in the relevant season via anon key (read-only RLS). If no open markets exist → returns `{ already_resolved: true }` and skips kym-resolve/kym-poll-sync. Prevents ~240 wasted invocations/month from re-detecting old articles.
+- Winner detected + open markets → triggers `kym-resolve` (preview then auto-execute)
+- Poll detected + open markets → triggers `kym-poll-sync`
+
+### Poll Sync (`api/kym-poll-sync.js`)
+
+- Triggered by kym-rss-check when "Cast Your Vote" article detected
+- Fetches nominees from `/api/kym-nominees`, compares with open KYMRACE markets
+- Creates markets for missing finalists via `labs_create_kymrace_system` RPC
+- **Image fetching:** For each missing finalist, fetches `knowyourmeme.com/memes/{slug}` and extracts `og:image` meta tag. Upgrades `/icons/newsfeed/` → `/icons/original/` for full resolution. Falls back to empty string on failure.
+- Non-finalist markets shown in preview mode (Discord notification with execute link)
+- Execute mode (`?execute=true&key=RESOLVE_SECRET`): resolves non-finalists as NO (`status='RES', result='NO'`)
+
+### DB Schema
+
+**Columns on `labs_markets`:**
+- `market_type = 'KYMRACE'` — distinguishes from coin prediction markets
+- `kym_slug` — KYM meme slug (e.g., `hey-girl-you-gonna-eat-your-cornbread`)
+- `season_id` — `YYYY-MM` format (e.g., `2026-03`)
+- `coin_color = '#71BAFF'` — blue accent (matches other labs)
+
+**RPCs:**
+- `labs_create_kymrace(p_user_id, p_meme_name, p_kym_slug, p_image_url, p_liquidity)` — user-created market, deducts balance
+- `labs_create_kymrace_system(p_meme_name, p_kym_slug, p_image_url, p_liquidity)` — indexer-created, no balance check, `created_by='SYSTEM'`
+- `labs_resolve_kymrace(p_season_id, p_top3_slugs text[])` — resolves all open KYMRACE markets for a season
+
+**Market ID format:** `KYM-{SLUG}-{ROUND}` (e.g., `KYM-hey-girl-you-gonna-eat-your-cornbread-1`)
+**Title:** `"Will {name} finish top 3 Meme of the Month?"`
+**Expiry:** 15th of next month (gives time for KYM to announce results)
+
+### Triggers & Constraints
+- `labs_prevent_duplicate_open` — deduplicates KYMRACE by `kym_slug + season_id`
+- `labs_enforce_market_expiry` — skips KYMRACE (expiry set by RPC, not trigger)
+- `labs_auto_resolve` — skips KYMRACE (resolved via cron + `labs_resolve_kymrace`)
+- `valid_market_expiry` CHECK — exempts KYMRACE
+
+### Frontend (app.jsx)
+- KYM tab shows single grid of KYMRACE markets
+- `KYMSeasonHeader` — shows "+ ADD MEME" button (opens KYMCreateModal) or "AWAITING RESULTS" when expired
+- `MemeMarketCard` — YES label = "TOP 3", NO label = "NOT TOP 3"
+- `KYMCreateModal` — search KYM, preview meme, set liquidity, create market
+- `KYMProbabilityGraph` — bar chart of top 3 probabilities for open markets
+
+### Key Files
+```
+api/
+├── kym-trending.js    # Scraper: 4-source KYM meme discovery
+├── kym-index.js       # Indexer: creates markets from trending (cron every 6h)
+├── kym-rss-check.js   # RSS monitor: detects winner/poll articles, gates downstream calls
+├── kym-resolve.js     # Resolver: settles markets from KYM results (cron days 1-15)
+├── kym-poll-sync.js   # Poll sync: creates finalist markets (with images), resolves non-finalists
+├── kym-winner.js      # Winner detection: scrapes MOTM voting page
+└── kym-nominees.js    # Nominee scraper: MOTM voting page nominees
+```
+
+### Cron Schedule (vercel.json)
+```json
+{ "path": "/api/kym-index",     "schedule": "0 */6 * * *" }         // Every 6 hours
+{ "path": "/api/kym-rss-check", "schedule": "0 * 1-10,24-31 * *" }  // Hourly, days 1-10 + 24-31
+{ "path": "/api/kym-poll-sync", "schedule": "0 12 26-28 * *" }      // 12:00 UTC, days 26-28 (fallback)
+{ "path": "/api/kym-resolve",   "schedule": "0 12 11-15 * *" }      // 12:00 UTC, days 11-15
+```
+
+---
 
 ## Meme Inventory (Holdings / Diamond Hands)
 

@@ -1,0 +1,32 @@
+{
+  "rewrites": [
+    { "source": "/memeofthemonth", "destination": "/experiments/memecoin-arena/" }
+  ],
+  "redirects": [
+    { "source": "/mememarket", "destination": "/memeofthemonth", "permanent": true },
+    { "source": "/kymrace", "destination": "/memeofthemonth", "permanent": true },
+    { "source": "/experiments/memecoin-arena/kymrace", "destination": "/memeofthemonth", "permanent": true }
+  ],
+  "crons": [
+    {
+      "path": "/api/kym-index",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/kym-rss-check",
+      "schedule": "0 * 1-10,24-31 * *"
+    },
+    {
+      "path": "/api/kym-poll-sync",
+      "schedule": "0 12 26-28 * *"
+    },
+    {
+      "path": "/api/kym-resolve",
+      "schedule": "0 12 11-15 * *"
+    },
+    {
+      "path": "/api/trend-score-update",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}

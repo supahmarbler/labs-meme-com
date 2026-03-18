@@ -220,7 +220,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
--- 6. NEW RPC: labs_create_mememarket
+-- 6. season_id column (added 2026-03-12 for Meme Race seasons)
+-- ============================================================
+
+ALTER TABLE labs_markets ADD COLUMN IF NOT EXISTS season_id text;
+
+-- ============================================================
+-- 7. NEW RPC: labs_create_mememarket (v2 — monthly seasons, no duration)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION labs_create_mememarket(
@@ -228,7 +234,6 @@ CREATE OR REPLACE FUNCTION labs_create_mememarket(
   p_meme_name text,
   p_trend_term text,
   p_image_url text,
-  p_duration_hours int,
   p_liquidity numeric DEFAULT 100000
 ) RETURNS json AS $$
 DECLARE
@@ -240,6 +245,9 @@ DECLARE
   v_creation_fee numeric := GREATEST(p_liquidity, 100000);
   v_new_balance numeric;
   v_open_count int;
+  v_month_end timestamptz;
+  v_days_left numeric;
+  v_season_id text;
 BEGIN
   -- Validate inputs
   IF length(trim(p_meme_name)) < 2 OR length(trim(p_meme_name)) > 50 THEN
@@ -248,8 +256,14 @@ BEGIN
   IF length(trim(p_trend_term)) < 2 OR length(trim(p_trend_term)) > 80 THEN
     RETURN json_build_object('success', false, 'error', 'term_invalid');
   END IF;
-  IF p_duration_hours NOT IN (24, 72, 168) THEN
-    RETURN json_build_object('success', false, 'error', 'duration_invalid');
+
+  -- Season: compute month-end and days left
+  v_month_end := (date_trunc('month', NOW() AT TIME ZONE 'UTC') + INTERVAL '1 month' - INTERVAL '1 second') AT TIME ZONE 'UTC';
+  v_days_left := EXTRACT(EPOCH FROM v_month_end - NOW()) / 86400.0;
+  v_season_id := to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM');
+
+  IF v_days_left < 7 THEN
+    RETURN json_build_object('success', false, 'error', 'season_ending_soon');
   END IF;
 
   -- Cap at 20 concurrent MEMEMARKET markets
@@ -297,7 +311,7 @@ BEGIN
   WHERE market_type = 'MEMEMARKET' AND id LIKE 'MEME-' || v_slug || '-%';
 
   v_market_id := 'MEME-' || v_slug || '-' || v_round;
-  v_expires_at := NOW() + (p_duration_hours || ' hours')::interval;
+  v_expires_at := v_month_end;
 
   -- Insert market
   INSERT INTO labs_markets (
@@ -309,7 +323,7 @@ BEGIN
     expires_at, volume, players,
     fee_pool, total_pot, winner_weight_sum, winner_invested_sum,
     creation_fee, created_by, creator_payout_claimed,
-    custom_title, created_at
+    custom_title, created_at, season_id
   ) VALUES (
     v_market_id, 'MEMEMARKET', 'OPEN',
     trim(p_meme_name), trim(p_meme_name), COALESCE(NULLIF(trim(p_image_url), ''), ''), '#71BAFF',
@@ -319,22 +333,22 @@ BEGIN
     v_expires_at, 0, 0,
     0, 0, 0, 0,
     v_creation_fee, p_user_id, false,
-    'Will ' || trim(p_meme_name) || ' trend UP in ' ||
-      CASE p_duration_hours WHEN 24 THEN '1 day' WHEN 72 THEN '3 days' WHEN 168 THEN '7 days' END || '?',
-    NOW()
+    trim(p_meme_name) || ' trend UP or DOWN',
+    NOW(), v_season_id
   );
 
   RETURN json_build_object(
     'success', true,
     'market_id', v_market_id,
     'new_balance', v_new_balance,
-    'expires_at', v_expires_at
+    'expires_at', v_expires_at,
+    'season_id', v_season_id
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================================
--- 7. INDEX for fast MEMEMARKET queries
+-- 8. INDEX for fast MEMEMARKET queries
 -- ============================================================
 
 CREATE INDEX IF NOT EXISTS idx_markets_mememarket_open
@@ -342,7 +356,60 @@ CREATE INDEX IF NOT EXISTS idx_markets_mememarket_open
   WHERE market_type = 'MEMEMARKET' AND status = 'OPEN';
 
 -- ============================================================
--- 8. PERMISSIONS
+-- 9. PERMISSIONS
 -- ============================================================
 
-GRANT EXECUTE ON FUNCTION labs_create_mememarket(text, text, text, text, int, numeric) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION labs_create_mememarket(text, text, text, text, numeric) TO anon, authenticated;
+
+-- ============================================================
+-- 10. KYMRACE — KYM Meme of the Month prediction markets
+-- Added 2026-03-13
+-- ============================================================
+
+ALTER TABLE labs_markets ADD COLUMN IF NOT EXISTS kym_slug text;
+
+-- valid_market_expiry updated to include KYMRACE
+-- labs_prevent_duplicate_open updated to deduplicate KYMRACE by kym_slug
+-- labs_enforce_market_expiry updated to skip KYMRACE
+-- labs_auto_resolve updated to skip KYMRACE (resolved via cron + labs_resolve_kymrace)
+
+CREATE INDEX IF NOT EXISTS idx_markets_kymrace_open
+  ON labs_markets (market_type, status)
+  WHERE market_type = 'KYMRACE' AND status = 'OPEN';
+
+-- labs_create_kymrace(p_user_id, p_meme_name, p_kym_slug, p_image_url, p_liquidity)
+-- Creates Phase 1 KYMRACE market. Expires end of month. Season = YYYY-MM.
+-- Market ID: KYM-P1-{SLUG}-{ROUND}. User-created, requires balance.
+
+-- labs_resolve_kymrace(p_season_id, p_winner_slug) [LEGACY]
+-- Resolves all KYMRACE markets for a season. Matching slug = YES, others = NO.
+-- Creator payout uses same LMSR subsidy formula as MEMEMARKET.
+
+GRANT EXECUTE ON FUNCTION labs_create_kymrace(text, text, text, text, numeric) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION labs_resolve_kymrace(text, text) TO anon, authenticated;
+
+-- ============================================================
+-- 11. KYMRACE — single phase ("Will X finish top 3 MOTM?")
+-- Added 2026-03-16, simplified from two-phase to single phase 2026-03-16
+-- ============================================================
+
+ALTER TABLE labs_markets ADD COLUMN IF NOT EXISTS kym_phase smallint;
+-- kym_phase column kept for backward compat but no longer used by new RPCs
+
+-- labs_prevent_duplicate_open: KYMRACE dedup uses kym_slug + season_id (no phase)
+
+-- labs_create_kymrace(p_user_id, p_meme_name, p_kym_slug, p_image_url, p_liquidity)
+-- User-created KYMRACE market. Expires 15th of next month. Season = YYYY-MM.
+-- Market ID: KYM-{SLUG}-{ROUND}. Title: "Will {name} finish top 3 Meme of the Month?"
+
+-- labs_create_kymrace_system(p_meme_name, p_kym_slug, p_image_url, p_liquidity)
+-- System/indexer-created KYMRACE market. No balance check, created_by='SYSTEM'.
+-- Expires 15th of next month. Market ID: KYM-{SLUG}-{ROUND}
+
+-- labs_resolve_kymrace(p_season_id, p_top3_slugs text[])
+-- Resolves ALL open KYMRACE markets for a season.
+-- Slug in top 3 → YES, else → NO.
+-- Creator payout for user-created markets (created_by != 'SYSTEM').
+
+GRANT EXECUTE ON FUNCTION labs_create_kymrace_system(text, text, text, numeric) TO service_role;
+GRANT EXECUTE ON FUNCTION labs_resolve_kymrace(text, text[]) TO service_role;
