@@ -923,7 +923,7 @@ const CoinImg = ({ src, color, size, sym }) => {
   const [imgErr, setImgErr] = React.useState(false);
   return (
     <div style={{
-      width:s, height:s, borderRadius:12, position:"relative",
+      width:s, height:s, borderRadius: 8, position:"relative",
       border:"1px solid "+(color||"#fff")+"1a",
       background:"linear-gradient(135deg, "+(color||"#fff")+"15, "+(color||"#fff")+"08)",
       overflow:"hidden", flexShrink:0,
@@ -935,7 +935,7 @@ const CoinImg = ({ src, color, size, sym }) => {
       {!imgErr && <img src={src} alt=""
         style={{
           position:"absolute", inset:0,
-          width:"100%", height:"100%", objectFit:"cover", borderRadius:11
+          width:"100%", height:"100%", objectFit:"cover", borderRadius: 7
         }}
         onError={() => setImgErr(true)}/>}
       {imgErr && <span>{(sym||"?")[0]}</span>}
@@ -952,7 +952,7 @@ const HowToPlayModal = ({ isOpen, onClose, isMobile, activeTab }) => {
   };
   const panelBase = {
     background:"linear-gradient(180deg,#1a2332,#0c1018)",
-    borderRadius: isMobile ? "20px 20px 0 0" : 20,
+    borderRadius: isMobile ? "12px 12px 0 0" : 12,
     padding: isMobile ? "24px 16px 32px" : 32,
     width: isMobile ? "100%" : "auto",
     minWidth: isMobile ? "auto" : 340,
@@ -1062,7 +1062,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
   };
   const panelBase = {
     background:"linear-gradient(180deg,#1a2332,#0c1018)",
-    borderRadius: isMobile ? "20px 20px 0 0" : 20,
+    borderRadius: isMobile ? "12px 12px 0 0" : 12,
     padding: isMobile ? "24px 16px 32px" : 32,
     width: isMobile ? "100%" : "auto",
     minWidth: isMobile ? "auto" : 340,
@@ -1085,14 +1085,14 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
             color:"#94a3b8", marginBottom:24, lineHeight:1.5
           }}>Connect your meme.com account to start playing.</div>
           <a href="https://meme.com" target="_blank" rel="noopener noreferrer" style={{
-            display:"block", width:"100%", height:48, borderRadius:12, border:"none",
+            display:"block", width:"100%", height:48, borderRadius: 8, border:"none",
             background:"linear-gradient(90deg,#71BAFF,#4023C3)",
             color:"#fff", cursor:"pointer", textDecoration:"none",
             fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
             lineHeight:"48px"
           }}>Login on meme.com</a>
           <button onClick={onClose} style={{
-            marginTop:12, width:"100%", height:40, borderRadius:10, border:"none",
+            marginTop:12, width:"100%", height:40, borderRadius: 6, border:"none",
             background:"transparent", color:"#ffffff60", cursor:"pointer",
             fontFamily:"'Jersey 25',sans-serif", fontSize:".85em"
           }}>Cancel</button>
@@ -1112,7 +1112,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
 
         <div style={{
           display:"flex", justifyContent:"space-around", marginBottom:16,
-          padding:"12px 0", borderRadius:12, background:"#0c101855"
+          padding:"12px 0", borderRadius: 8, background:"#0c101855"
         }}>
           <div>
             <div style={{ fontFamily:"'Jersey 25',sans-serif", fontSize:".7em", color:"#ffffff50" }}>MEMESCORE</div>
@@ -1132,7 +1132,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
           {["deposit","withdraw"].map(m => (
             <button key={m} onClick={() => { setMode(m); setAmount(""); setError(null); }} style={{
-              flex:1, height:36, borderRadius:10, border:"none", cursor:"pointer",
+              flex:1, height:36, borderRadius: 6, border:"none", cursor:"pointer",
               fontFamily:"'Jersey 25',sans-serif", fontSize:".9em", textTransform:"uppercase",
               background: mode===m ? "linear-gradient(90deg,#71BAFF,#4023C3)" : "#ffffff10",
               color: mode===m ? "#fff" : "#ffffff60"
@@ -1151,7 +1151,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
             placeholder={`Amount to ${mode}...`}
             value={amount} onChange={e => { setAmount(e.target.value); setError(null); }}
             style={{
-              height:42, border:"1px solid #4c5159", borderRadius:15,
+              height:42, border:"1px solid #4c5159", borderRadius: 10,
               textAlign:"center", color:"#fff", background:"transparent",
               fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none",
               width:"100%", boxSizing:"border-box"
@@ -1161,7 +1161,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
               <button key={p}
                 onClick={() => setAmount(String(Math.floor(maxAmount*p/100)))}
                 style={{
-                  flex:1, padding:"4px 0", borderRadius:8,
+                  flex:1, padding:"4px 0", borderRadius: 5,
                   fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
                   background:"#00000042", border:"1px solid #ffffff15",
                   color:"#ffffff80", cursor:"pointer"
@@ -1182,7 +1182,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
 
         <button onClick={handleSubmit} disabled={loading || atCap || !amount || parseInt(amount)<=0}
           style={{
-            width:"100%", height:48, borderRadius:12, border:"none",
+            width:"100%", height:48, borderRadius: 8, border:"none",
             background: (loading || atCap) ? "#ffffff20" : "linear-gradient(90deg,#71BAFF,#4023C3)",
             color:"#fff", cursor: (loading || atCap) ? "not-allowed" : "pointer",
             fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.1em",
@@ -1192,7 +1192,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
         </button>
 
         <button onClick={onClose} style={{
-          marginTop:12, width:"100%", height:40, borderRadius:10, border:"none",
+          marginTop:12, width:"100%", height:40, borderRadius: 6, border:"none",
           background:"transparent", color:"#ffffff60", cursor:"pointer",
           fontFamily:"'Jersey 25',sans-serif", fontSize:".85em"
         }}>Cancel</button>
@@ -1257,7 +1257,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
   const bx = {
     height:38, display:"flex", alignItems:"center", justifyContent:"center",
     width:"100%", fontFamily:"'Jersey 25',sans-serif", fontSize:"1em",
-    textTransform:"uppercase", borderRadius:15, cursor:"pointer",
+    textTransform:"uppercase", borderRadius: 10, cursor:"pointer",
     border:"none", color:"#fff"
   };
 
@@ -1265,10 +1265,10 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
     <div style={{
       background:"linear-gradient(360deg,#212936,#4e596c)",
       boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius:"16px 16px 25px 25px", padding:"5px 6px 10px"
+      borderRadius:"10px 10px 16px 16px", padding:"5px 6px 10px"
     }}>
       <div style={{
-        background:"#191f29", borderRadius:14, padding:"14px 18px",
+        background:"#191f29", borderRadius: 8, padding:"14px 18px",
         minHeight:192, display:"flex", flexDirection:"column",
         justifyContent:"space-between"
       }}>
@@ -1283,7 +1283,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
             }}><a href={`https://meme.com/coin/${MEME_SLUGS[m.c.sym] || m.c.sym.toLowerCase()}`} target="_blank" rel="noopener noreferrer" style={{ ...gld, textDecoration:"none", textShadow:"none" }}>${m.c.sym}</a> Up or Down</div>
           </div>
           <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
-            padding:"2px 8px", borderRadius:8, cursor:"default",
+            padding:"2px 8px", borderRadius: 5, cursor:"default",
             background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
             border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
             animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -1434,7 +1434,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
                 value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
                 style={{
-                  height:42, border:"1px solid #4c5159", borderRadius:15,
+                  height:42, border:"1px solid #4c5159", borderRadius: 10,
                   textAlign:"center", color:"#fff", background:"transparent",
                   fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none",
                   width:"100%"
@@ -1444,7 +1444,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
                   <button key={p}
                     onClick={() => setAmt(String(Math.floor(effectiveMax*p/100)))}
                     style={{
-                      flex:1, padding:"4px 0", borderRadius:8,
+                      flex:1, padding:"4px 0", borderRadius: 5,
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
                       background:"#00000042", border:"1px solid #ffffff15",
                       color:"#ffffff80", cursor:"pointer"
@@ -1515,7 +1515,7 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 <div style={{
                   fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", textAlign:"center",
-                  color:"#fff", background:"#242a35", borderRadius:8, padding:"8px 12px"
+                  color:"#fff", background:"#242a35", borderRadius: 5, padding:"8px 12px"
                 }}>YOU WILL WITHDRAW 100% OF YOUR CURRENT POSITION.</div>
                 <div style={{ display:"flex", gap:10 }}>
                   <button style={{ ...bx, background:"#00000042", flex:"0 0 50px" }}
@@ -1628,7 +1628,7 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
   const bx = {
     height:38, display:"flex", alignItems:"center", justifyContent:"center",
     width:"100%", fontFamily:"'Jersey 25',sans-serif", fontSize:"1em",
-    textTransform:"uppercase", borderRadius:15, cursor:"pointer",
+    textTransform:"uppercase", borderRadius: 10, cursor:"pointer",
     border:"none", color:"#fff"
   };
 
@@ -1636,10 +1636,10 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
     <div style={{
       background:"linear-gradient(360deg,#212936,#4e596c)",
       boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius:"16px 16px 25px 25px", padding:"5px 6px 10px"
+      borderRadius:"10px 10px 16px 16px", padding:"5px 6px 10px"
     }}>
       <div style={{
-        background:"#191f29", borderRadius:14, padding:"14px 18px",
+        background:"#191f29", borderRadius: 8, padding:"14px 18px",
         minHeight:192, display:"flex", flexDirection:"column",
         justifyContent:"space-between"
       }}>
@@ -1647,11 +1647,11 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
         <div style={{ display:"flex", alignItems:"center", marginBottom:12, gap:11, justifyContent:"space-between" }}>
           <div style={{ display:"flex", alignItems:"center", gap:11, minWidth:0, flex:1 }}>
             <div style={{
-              width:40, height:40, borderRadius:12, flexShrink:0, overflow:"hidden",
+              width:40, height:40, borderRadius: 8, flexShrink:0, overflow:"hidden",
               border:"1px solid #ffffff1a", background:"#0c1018"
             }}>
               <img src={m.customImageUrl} alt="" style={{
-                width:"100%", height:"100%", objectFit:"cover", borderRadius:11
+                width:"100%", height:"100%", objectFit:"cover", borderRadius: 7
               }} onError={e => { e.target.style.display="none"; }}/>
             </div>
             <div style={{
@@ -1661,7 +1661,7 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
             }}>{m.customTitle}</div>
           </div>
           <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
-            padding:"2px 8px", borderRadius:8, flexShrink:0, cursor:"default",
+            padding:"2px 8px", borderRadius: 5, flexShrink:0, cursor:"default",
             background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
             border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
             animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -1776,7 +1776,7 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
                 value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
                 style={{
-                  height:42, border:"1px solid #4c5159", borderRadius:15,
+                  height:42, border:"1px solid #4c5159", borderRadius: 10,
                   textAlign:"center", color:"#fff", background:"transparent",
                   fontFamily:"'Jersey 25',sans-serif", fontSize:"1em", outline:"none",
                   width:"100%"
@@ -1786,7 +1786,7 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
                   <button key={p}
                     onClick={() => setAmt(String(Math.floor(effectiveMax*p/100)))}
                     style={{
-                      flex:1, padding:"4px 0", borderRadius:8,
+                      flex:1, padding:"4px 0", borderRadius: 5,
                       fontFamily:"'Jersey 25',sans-serif", fontSize:".8em",
                       background:"#00000042", border:"1px solid #ffffff15",
                       color:"#ffffff80", cursor:"pointer"
@@ -1853,7 +1853,7 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 <div style={{
                   fontFamily:"'Jersey 25',sans-serif", fontSize:".85em", textAlign:"center",
-                  color:"#fff", background:"#242a35", borderRadius:8, padding:"8px 12px"
+                  color:"#fff", background:"#242a35", borderRadius: 5, padding:"8px 12px"
                 }}>YOU WILL WITHDRAW 100% OF YOUR CURRENT POSITION.</div>
                 <div style={{ display:"flex", gap:10 }}>
                   <button style={{ ...bx, background:"#00000042", flex:"0 0 50px" }}
@@ -2014,56 +2014,115 @@ const RACE_COLORS = [
 ];
 
 // ─── KYM PROBABILITY GRAPH ───
-const KYMProbabilityGraph = ({ markets, trendSnaps, isMobile }) => {
+const KYMProbabilityGraph = ({ markets, trendSnaps, isMobile, pos, onSell }) => {
   const kymMarkets = markets.filter(m => m.type === "KYMRACE" && m.st === "OPEN" && m.b >= 100000);
   if (kymMarkets.length === 0) return null;
+  const [expanded, setExpanded] = React.useState(false);
 
-  // Build sorted bar data — top entries by probability
-  const bars = kymMarkets.map((m, idx) => ({
-    id: m.id,
-    name: m.c.name,
-    prob: Math.round(yP(m.qY, m.qN, m.b)),
-    color: RACE_COLORS[idx % RACE_COLORS.length],
-    img: m.c.img
-  })).sort((a, b) => b.prob - a.prob).slice(0, isMobile ? 8 : 12);
+  // Build bar data sorted by probability, assign colors by rank
+  const allBars = kymMarkets.map(m => {
+    const p = pos?.[m.id];
+    const prob = Math.round(yP(m.qY, m.qN, m.b));
+    let pnl = null;
+    if (p && !p.claimed) {
+      const grossRf = sellShares(m.qY, m.qN, m.b, p.sh, p.side);
+      pnl = grossRf - p.inv;
+    }
+    return {
+      id: m.id, name: m.c.name, prob, img: m.c.img,
+      hasPos: !!(p && !p.claimed),
+      side: p?.side, inv: p?.inv, pnl
+    };
+  }).sort((a, b) => b.prob - a.prob);
+  allBars.forEach((b, i) => { b.color = RACE_COLORS[i % RACE_COLORS.length]; });
+
+  // Fixed top N for the main graph
+  const LIMIT = isMobile ? 8 : 12;
+  const bars = allBars.slice(0, LIMIT);
+
+  // Extra positioned bars outside the top N
+  const topIds = new Set(bars.map(b => b.id));
+  const extraPos = allBars.filter(b => b.hasPos && !topIds.has(b.id));
 
   const BAR_H = isMobile ? 16 : 18;
   const GAP = isMobile ? 4 : 5;
-  const LABEL_W = isMobile ? 130 : 180;
+  const LABEL_W = isMobile ? 110 : 160;
   const PROB_W = 36;
-  const totalH = bars.length * (BAR_H + GAP) - GAP;
+  const hasAnyPos = bars.some(b => b.hasPos) || extraPos.length > 0;
+
+  const renderBar = (b, i, total) => (
+    <div key={b.id} style={{
+      display: "flex", alignItems: "center", gap: isMobile ? 4 : 8,
+      marginBottom: i < total - 1 ? GAP : 0, height: BAR_H,
+      cursor: "pointer",
+      borderLeft: b.hasPos ? `2px solid ${b.pnl >= 0 ? "#4ECDC4" : "#FF6B6B"}` : "2px solid transparent",
+      paddingLeft: 4
+    }} onClick={() => { const el = document.getElementById(`card-${b.id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}>
+      <div style={{
+        width: LABEL_W, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        fontFamily: "'Londrina Solid',sans-serif", fontSize: isMobile ? ".65em" : ".75em",
+        color: b.color, textShadow: "0 1px 3px rgba(0,0,0,0.8)"
+      }}>{b.name}</div>
+      <div style={{ flex: 1, height: "100%", background: "rgba(255,255,255,0.04)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
+        <div style={{
+          height: "100%", width: Math.max(b.prob, 1) + "%",
+          background: `linear-gradient(90deg, ${b.color}60, ${b.color})`,
+          borderRadius: 4, transition: "width 0.3s ease"
+        }} />
+      </div>
+      <div style={{
+        width: PROB_W, flexShrink: 0, textAlign: "right",
+        fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".7em" : ".8em",
+        color: b.prob > 30 ? "#fff" : "#ffffff80"
+      }}>{b.prob}%</div>
+      {hasAnyPos && (b.hasPos ? (
+        <React.Fragment>
+          <div style={{
+            flexShrink: 0, width: isMobile ? 42 : 52, textAlign: "right",
+            fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".6em" : ".7em",
+            color: b.pnl >= 0 ? "#4ECDC4" : "#FF6B6B"
+          }}>{b.pnl >= 0 ? "+" : ""}{(b.pnl || 0).toLocaleString()}</div>
+          <div style={{
+            flexShrink: 0, padding: "1px 5px", borderRadius: 3,
+            fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".55em" : ".65em",
+            background: b.side === "YES" ? "#4ECDC420" : "#FF6B6B20",
+            color: b.side === "YES" ? "#4ECDC4" : "#FF6B6B",
+            whiteSpace: "nowrap"
+          }}>{b.side === "YES" ? "YES" : "NO"}</div>
+          <button onClick={(e) => { e.stopPropagation(); const el = document.getElementById(`card-${b.id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }} style={{
+            flexShrink: 0, padding: "1px 6px", border: "1px solid #4ECDC450",
+            borderRadius: 4, background: "#4ECDC410", color: "#4ECDC4",
+            fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".55em" : ".65em",
+            cursor: "pointer", lineHeight: 1.2
+          }}>BUY</button>
+          <button onClick={(e) => { e.stopPropagation(); onSell?.(b.id); }} style={{
+            flexShrink: 0, padding: "1px 6px", border: "1px solid #FF6B6B50",
+            borderRadius: 4, background: "#FF6B6B10", color: "#FF6B6B",
+            fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".55em" : ".65em",
+            cursor: "pointer", lineHeight: 1.2
+          }}>SELL</button>
+        </React.Fragment>
+      ) : (
+        <div style={{ flexShrink: 0, width: isMobile ? 140 : 170 }} />
+      ))}
+    </div>
+  );
 
   return (
     <div style={{
       background: "linear-gradient(180deg, #0c101800, #0c101840)",
-      borderRadius: 16, padding: isMobile ? "10px 12px 8px" : "12px 16px 10px",
+      borderRadius: 10, padding: isMobile ? "10px 12px 8px" : "12px 16px 10px",
       border: "1px solid #ffffff08", marginBottom: isMobile ? 12 : 16
     }}>
-      {bars.map((b, i) => (
-        <div key={b.id} style={{
-          display: "flex", alignItems: "center", gap: 8,
-          marginBottom: i < bars.length - 1 ? GAP : 0, height: BAR_H,
-          cursor: "pointer"
-        }} onClick={() => { const el = document.getElementById(`card-${b.id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}>
-          <div style={{
-            width: LABEL_W, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            fontFamily: "'Londrina Solid',sans-serif", fontSize: isMobile ? ".65em" : ".75em",
-            color: b.color, textShadow: "0 1px 3px rgba(0,0,0,0.8)"
-          }}>{b.name}</div>
-          <div style={{ flex: 1, height: "100%", background: "rgba(255,255,255,0.04)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
-            <div style={{
-              height: "100%", width: Math.max(b.prob, 1) + "%",
-              background: `linear-gradient(90deg, ${b.color}60, ${b.color})`,
-              borderRadius: 4, transition: "width 0.3s ease"
-            }} />
-          </div>
-          <div style={{
-            width: PROB_W, flexShrink: 0, textAlign: "right",
-            fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".7em" : ".8em",
-            color: b.prob > 30 ? "#fff" : "#ffffff80"
-          }}>{b.prob}%</div>
-        </div>
-      ))}
+      {bars.map((b, i) => renderBar(b, i, bars.length))}
+      {extraPos.length > 0 && !expanded && (
+        <div onClick={() => setExpanded(true)} style={{
+          marginTop: GAP + 2, padding: "4px 0", textAlign: "center", cursor: "pointer",
+          fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".65em" : ".75em",
+          color: "#71BAFF", borderTop: "1px solid #ffffff08"
+        }}>VIEW ALL ({extraPos.length} more position{extraPos.length > 1 ? "s" : ""})</div>
+      )}
+      {expanded && extraPos.map((b, i) => renderBar(b, i, extraPos.length))}
     </div>
   );
 };
@@ -2077,7 +2136,7 @@ const KYMSeasonHeader = ({ isMobile, kymMarkets, onAddMeme }) => {
       display: "flex", justifyContent: "space-between", alignItems: "center",
       marginBottom: isMobile ? 10 : 16, padding: "12px 16px",
       background: "rgba(255,255,255,0.03)",
-      borderRadius: 16,
+      borderRadius: 10,
       border: "1px solid rgba(255,255,255,0.06)",
       backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)"
     }}>
@@ -2091,7 +2150,7 @@ const KYMSeasonHeader = ({ isMobile, kymMarkets, onAddMeme }) => {
         {isAwaitingResults ? (
           <div style={{
             fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".7em" : ".8em",
-            padding: "3px 12px", borderRadius: 20,
+            padding: "3px 12px", borderRadius: 12,
             background: "rgba(0,0,0,0.3)",
             border: "1px solid #f7931a30",
             color: "#f7931a"
@@ -2099,7 +2158,7 @@ const KYMSeasonHeader = ({ isMobile, kymMarkets, onAddMeme }) => {
         ) : (
           <button onClick={onAddMeme} style={{
             fontFamily:"'Londrina Solid',sans-serif", fontSize: isMobile ? ".85em" : ".95em",
-            padding:"6px 16px", borderRadius:20, border:"1px solid rgba(113,186,255,0.3)",
+            padding:"6px 16px", borderRadius: 12, border:"1px solid rgba(113,186,255,0.3)",
             background:"rgba(113,186,255,0.15)",
             backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)",
             color:"#71BAFF", cursor:"pointer"
@@ -2185,7 +2244,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
   const bx = {
     height: 38, display: "flex", alignItems: "center", justifyContent: "center",
     width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
-    textTransform: "uppercase", borderRadius: 15, cursor: "pointer",
+    textTransform: "uppercase", borderRadius: 10, cursor: "pointer",
     border: "none", color: "#fff"
   };
 
@@ -2195,10 +2254,10 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
     <div style={{
       background: "linear-gradient(360deg,#212936,#4e596c)",
       boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px"
+      borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px"
     }}>
       <div style={{
-        background: "#191f29", borderRadius: 14, padding: "14px 18px",
+        background: "#191f29", borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
@@ -2210,7 +2269,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
           <div style={{ flex: "0 0 92px", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
             <CoinImg src={m.c.img} color={colorA} size={92} sym={m.c.sym}/>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start",
-              width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 8, marginTop: 10,
+              width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 5, marginTop: 10,
               background: aLeads ? "#FF98000a" : bLeads ? "#f65e5e0a" : "transparent",
               border: aLeads ? "1px solid #FF980025" : bLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
@@ -2276,7 +2335,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
           <div style={{ flex: "0 0 92px", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
             <CoinImg src={m.cB?.img} color={colorB} size={92} sym={m.cB?.sym}/>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end",
-              width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 8, marginTop: 10,
+              width: 92, boxSizing: "border-box", padding: "3px 8px", borderRadius: 5, marginTop: 10,
               background: bLeads ? "#448AFF0a" : aLeads ? "#f65e5e0a" : "transparent",
               border: bLeads ? "1px solid #448AFF25" : aLeads ? "1px solid #f65e5e20" : "1px solid transparent",
               transition: "all 0.3s ease"
@@ -2390,7 +2449,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
                 value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
                 style={{
-                  height: 42, border: "1px solid #4c5159", borderRadius: 15,
+                  height: 42, border: "1px solid #4c5159", borderRadius: 10,
                   textAlign: "center", color: "#fff", background: "transparent",
                   fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none",
                   width: "100%"
@@ -2400,7 +2459,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
                   <button key={p}
                     onClick={() => setAmt(String(Math.floor(effectiveMax * p / 100)))}
                     style={{
-                      flex: 1, padding: "4px 0", borderRadius: 8,
+                      flex: 1, padding: "4px 0", borderRadius: 5,
                       fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
                       background: "#00000042", border: "1px solid #ffffff15",
                       color: "#ffffff80", cursor: "pointer"
@@ -2465,7 +2524,7 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{
                   fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", textAlign: "center",
-                  color: "#fff", background: "#242a35", borderRadius: 8, padding: "8px 12px"
+                  color: "#fff", background: "#242a35", borderRadius: 5, padding: "8px 12px"
                 }}>YOU WILL WITHDRAW 100% OF YOUR CURRENT POSITION.</div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <button style={{ ...bx, background: "#00000042", flex: "0 0 50px" }}
@@ -2627,13 +2686,13 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
   const bx = {
     height: 38, display: "flex", alignItems: "center", justifyContent: "center",
     width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
-    textTransform: "uppercase", borderRadius: 15, cursor: "pointer",
+    textTransform: "uppercase", borderRadius: 10, cursor: "pointer",
     border: "none", color: "#fff"
   };
 
   return (
     <div style={isKymRace ? {
-      borderRadius: 20, overflow: "hidden",
+      borderRadius: 12, overflow: "hidden",
       background: "linear-gradient(135deg, rgba(20,30,50,0.8), rgba(12,16,24,0.95))",
       backdropFilter: "blur(20px) saturate(180%)",
       WebkitBackdropFilter: "blur(20px) saturate(180%)",
@@ -2642,7 +2701,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
     } : {
       background: "linear-gradient(360deg,#1a2636,#2a4060)",
       boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px"
+      borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px"
     }}>
       {/* KYM Hero Image */}
       {isKymRace && m.c.img && (
@@ -2687,7 +2746,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
         display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       } : {
-        background: "#191f29", borderRadius: 14, padding: "14px 18px",
+        background: "#191f29", borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
@@ -2722,11 +2781,11 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
             <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flex: 1 }}>
               {m.c.img && (
                 <div style={{
-                  width: 40, height: 40, borderRadius: 12, flexShrink: 0, overflow: "hidden",
+                  width: 40, height: 40, borderRadius: 8, flexShrink: 0, overflow: "hidden",
                   border: "1px solid #ffffff1a", background: "#0c1018"
                 }}>
                   <img src={m.c.img} alt="" loading="lazy" style={{
-                    width: "100%", height: "100%", objectFit: "cover", borderRadius: 11
+                    width: "100%", height: "100%", objectFit: "cover", borderRadius: 7
                   }} onError={e => { e.target.style.display = "none"; }} />
                 </div>
               )}
@@ -2741,7 +2800,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
               </div>
             </div>
             <div className="tip" data-tip={new Date(m.ea).toLocaleString()} style={{
-              padding: "2px 8px", borderRadius: 8, flexShrink: 0, cursor: "default",
+              padding: "2px 8px", borderRadius: 5, flexShrink: 0, cursor: "default",
               background: isAwaitingWinner ? "rgba(247,147,26,0.15)" : sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
               border: isAwaitingWinner ? "1px solid rgba(247,147,26,0.4)" : sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
               animation: isAwaitingWinner ? undefined : sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -2892,7 +2951,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
                 value={amt} onChange={e => setAmt(e.target.value)} onFocus={e => e.target.select()} autoFocus
                 style={{
-                  height: 42, border: "1px solid #4c5159", borderRadius: 15,
+                  height: 42, border: "1px solid #4c5159", borderRadius: 10,
                   textAlign: "center", color: "#fff", background: "transparent",
                   fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none",
                   width: "100%"
@@ -2902,7 +2961,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
                   <button key={p}
                     onClick={() => setAmt(String(Math.floor(effectiveMax * p / 100)))}
                     style={{
-                      flex: 1, padding: "4px 0", borderRadius: 8,
+                      flex: 1, padding: "4px 0", borderRadius: 5,
                       fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
                       background: "#00000042", border: "1px solid #ffffff15",
                       color: "#ffffff80", cursor: "pointer"
@@ -2969,7 +3028,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{
                   fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", textAlign: "center",
-                  color: "#fff", background: "#242a35", borderRadius: 8, padding: "8px 12px"
+                  color: "#fff", background: "#242a35", borderRadius: 5, padding: "8px 12px"
                 }}>YOU WILL WITHDRAW 100% OF YOUR CURRENT POSITION.</div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <button style={{ ...bx, background: "#00000042", flex: "0 0 50px" }}
@@ -3133,12 +3192,12 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
     display: "flex", alignItems: "center", justifyContent: "center", padding: 16
   };
   const modalStyle = {
-    background: "#191f29", borderRadius: 20, padding: "24px 28px",
+    background: "#191f29", borderRadius: 12, padding: "24px 28px",
     maxWidth: 440, width: "100%", maxHeight: "85vh", overflow: "auto",
     boxShadow: "0 8px 48px rgba(0,0,0,0.6)", border: "1px solid #ffffff10"
   };
   const inputStyle = {
-    width: "100%", height: 36, borderRadius: 10, border: "1px solid #ffffff20",
+    width: "100%", height: 36, borderRadius: 6, border: "1px solid #ffffff20",
     background: "#0c1018", color: "#fff", padding: "0 12px",
     fontFamily: "'Mulish',sans-serif", fontSize: ".85em", outline: "none",
     marginBottom: 8, boxSizing: "border-box"
@@ -3182,7 +3241,7 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
             <button onClick={() => { if (memeName.trim() && kymSlug.trim()) setWizStep(2); }}
               disabled={!memeName.trim() || !kymSlug.trim()}
               style={{
-                width: "100%", height: 40, borderRadius: 10, border: "none", marginTop: 4,
+                width: "100%", height: 40, borderRadius: 6, border: "none", marginTop: 4,
                 background: memeName.trim() && kymSlug.trim() ? "linear-gradient(90deg,#71BAFF,#4023C3)" : "#ffffff15",
                 color: "#fff", cursor: memeName.trim() && kymSlug.trim() ? "pointer" : "default",
                 fontFamily: "'Jersey 25',sans-serif", fontSize: "1em"
@@ -3192,7 +3251,7 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
 
         {wizStep === 2 && (
           <div>
-            <div style={{ background: "#0c1018", borderRadius: 12, padding: "14px 16px", marginBottom: 12, border: "1px solid #ffffff10" }}>
+            <div style={{ background: "#0c1018", borderRadius: 8, padding: "14px 16px", marginBottom: 12, border: "1px solid #ffffff10" }}>
               <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em", marginBottom: 4 }}>{memeName}</div>
               <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff40" }}>
                 knowyourmeme.com/memes/{kymSlug}
@@ -3202,7 +3261,7 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
               </div>
             </div>
 
-            <div style={{ background: "#71BAFF10", borderRadius: 10, padding: "10px 14px", marginBottom: 12, border: "1px solid #71BAFF20" }}>
+            <div style={{ background: "#71BAFF10", borderRadius: 6, padding: "10px 14px", marginBottom: 12, border: "1px solid #71BAFF20" }}>
               <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em", color: "#71BAFF", marginBottom: 4 }}>100K MEMESCORE FEE</div>
               <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".7em", color: "#ffffff50" }}>Market starts at ~15% with 250K liquidity for max upside</div>
             </div>
@@ -3211,14 +3270,14 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
 
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setWizStep(1)} style={{
-                flex: "0 0 60px", height: 42, borderRadius: 10, border: "1px solid #ffffff20",
+                flex: "0 0 60px", height: 42, borderRadius: 6, border: "1px solid #ffffff20",
                 background: "transparent", color: "#ffffff60", cursor: "pointer",
                 fontFamily: "'Jersey 25',sans-serif", fontSize: ".9em"
               }}>BACK</button>
               <button onClick={doCreate}
                 disabled={creating || bal < CREATION_FEE}
                 style={{
-                  flex: 1, height: 42, borderRadius: 10, border: "none",
+                  flex: 1, height: 42, borderRadius: 6, border: "none",
                   background: creating || bal < CREATION_FEE ? "#ffffff15" : "linear-gradient(90deg,#71BAFF,#4023C3)",
                   color: "#fff", cursor: creating || bal < CREATION_FEE ? "default" : "pointer",
                   fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em"
@@ -3342,7 +3401,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
   const bx = {
     height: 38, display: "flex", alignItems: "center", justifyContent: "center",
     width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
-    textTransform: "uppercase", borderRadius: 15, cursor: loading ? "wait" : "pointer",
+    textTransform: "uppercase", borderRadius: 10, cursor: loading ? "wait" : "pointer",
     border: "none", color: "#fff"
   };
 
@@ -3353,10 +3412,10 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
     <div style={{
       background: "linear-gradient(360deg,#212936,#4e596c)",
       boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px"
+      borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px"
     }}>
       <div style={{
-        background: "#191f29", borderRadius: 14, padding: "14px 18px",
+        background: "#191f29", borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
@@ -3365,7 +3424,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
           <div style={{ display: "flex", alignItems: "center", gap: 11, flex: 1, minWidth: 0 }}>
             {pm.image_url ? (
               <div style={{
-                width: 40, height: 40, borderRadius: 12, flexShrink: 0, overflow: "hidden",
+                width: 40, height: 40, borderRadius: 8, flexShrink: 0, overflow: "hidden",
                 background: "linear-gradient(135deg, #71BAFF15, #4023C308)"
               }}>
                 <img src={pm.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -3373,7 +3432,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
               </div>
             ) : (
               <div style={{
-                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                width: 40, height: 40, borderRadius: 8, flexShrink: 0,
                 background: "linear-gradient(135deg, #71BAFF25, #4023C318)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 18
@@ -3387,7 +3446,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
           </div>
           {!isResolved && (
             <div className="tip" data-tip={new Date(pmExpiry).toLocaleString()} style={{
-              padding: "2px 8px", borderRadius: 8, flexShrink: 0, cursor: "default",
+              padding: "2px 8px", borderRadius: 5, flexShrink: 0, cursor: "default",
               background: sec <= 300 ? "rgba(247,147,26,0.12)" : "rgba(255,255,255,0.04)",
               border: sec <= 300 ? "1px solid rgba(247,147,26,0.3)" : "1px solid transparent",
               animation: sec <= 300 ? "timerPulse 1s ease-in-out infinite" : undefined
@@ -3501,7 +3560,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
               <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="Amount..."
                 value={amt} onChange={e => { setAmt(e.target.value); setError(null); }} onFocus={e => e.target.select()} autoFocus
                 style={{
-                  height: 42, border: "1px solid #4c5159", borderRadius: 15,
+                  height: 42, border: "1px solid #4c5159", borderRadius: 10,
                   textAlign: "center", color: "#fff", background: "transparent",
                   fontFamily: "'Jersey 25',sans-serif", fontSize: "1em", outline: "none",
                   width: "100%"
@@ -3511,7 +3570,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
                   <button key={p}
                     onClick={() => setAmt(String(Math.floor(maxBet * p / 100)))}
                     style={{
-                      flex: 1, padding: "4px 0", borderRadius: 8,
+                      flex: 1, padding: "4px 0", borderRadius: 5,
                       fontFamily: "'Jersey 25',sans-serif", fontSize: ".8em",
                       background: "#00000042", border: "1px solid #ffffff15",
                       color: "#ffffff80", cursor: "pointer"
@@ -3553,7 +3612,7 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{
                   fontFamily: "'Jersey 25',sans-serif", fontSize: ".85em", textAlign: "center",
-                  color: "#fff", background: "#242a35", borderRadius: 8, padding: "8px 12px"
+                  color: "#fff", background: "#242a35", borderRadius: 5, padding: "8px 12px"
                 }}>SELL YOUR ENTIRE {posSide === "YES" ? labelYes : labelNo} POSITION FOR {netRf.toLocaleString()} MEMESCORE?</div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <button style={{ ...bx, background: "#00000042", flex: "0 0 50px" }}
@@ -3676,7 +3735,7 @@ const TreasureChestDialog = ({ questId, authToken, onClose, isMobile }) => {
     <div style={modalBase} onClick={() => step === "picking" && onClose(null)}>
       <div onClick={e => e.stopPropagation()} style={{
         background: "url(https://meme.com/assets/images/farm/quest/quest-daily-dialog-bg-v1.webp) center/cover",
-        borderRadius: isMobile ? "20px 20px 0 0" : 20,
+        borderRadius: isMobile ? "12px 12px 0 0" : 12,
         padding: 0, width: isMobile ? "100%" : "auto",
         minWidth: isMobile ? "auto" : 380, maxWidth: isMobile ? "100%" : 440,
         position: "relative", overflow: "hidden"
@@ -3794,7 +3853,7 @@ const TreasureChestDialog = ({ questId, authToken, onClose, isMobile }) => {
           <div style={{ display: "flex", justifyContent: "center" }}>
             {step === "picking" && (
               <button onClick={handleOpen} disabled={selected === null} style={{
-                width: "100%", height: 44, borderRadius: 15, border: "none",
+                width: "100%", height: 44, borderRadius: 10, border: "none",
                 background: selected !== null ? "#71baff" : "#ffffff15",
                 color: selected !== null ? "#fff" : "#ffffff40",
                 cursor: selected !== null ? "pointer" : "not-allowed",
@@ -3804,7 +3863,7 @@ const TreasureChestDialog = ({ questId, authToken, onClose, isMobile }) => {
             )}
             {step === "reward" && (
               <button onClick={() => onClose(reward)} style={{
-                width: "100%", height: 44, borderRadius: 15, border: "none",
+                width: "100%", height: 44, borderRadius: 10, border: "none",
                 background: "#71baff", color: "#fff", cursor: "pointer",
                 fontFamily: "'Jersey 25',sans-serif", fontSize: "1.1em",
                 textTransform: "uppercase"
@@ -3838,7 +3897,7 @@ const TreasureChestCard = ({ chestState, chestCooldown, chestReward, chestQuest,
   const bx = {
     height: 38, display: "flex", alignItems: "center", justifyContent: "center",
     width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
-    textTransform: "uppercase", borderRadius: 15, cursor: "pointer",
+    textTransform: "uppercase", borderRadius: 10, cursor: "pointer",
     border: "none", color: "#fff"
   };
 
@@ -3846,18 +3905,18 @@ const TreasureChestCard = ({ chestState, chestCooldown, chestReward, chestQuest,
     <div style={{
       background: "linear-gradient(360deg,#212936,#4e596c)",
       boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px",
+      borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px",
       opacity: locked ? 0.6 : 1, transition: "opacity 0.2s"
     }}>
       <div style={{
         background: "url(https://meme.com/assets/images/farm/quest/quest-daily-v1.webp) center/cover",
-        borderRadius: 14, padding: "14px 18px",
+        borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between", position: "relative", overflow: "hidden"
       }}>
         {/* Dark overlay */}
         <div style={{
-          position: "absolute", inset: 0, borderRadius: 14,
+          position: "absolute", inset: 0, borderRadius: 8,
           background: "rgba(25,31,41,0.82)", pointerEvents: "none"
         }}/>
 
@@ -3886,7 +3945,7 @@ const TreasureChestCard = ({ chestState, chestCooldown, chestReward, chestQuest,
             {isOpening && (
               <div style={{
                 position: "absolute", inset: 0, display: "flex", alignItems: "center",
-                justifyContent: "center", background: "rgba(0,0,0,0.4)", borderRadius: 8
+                justifyContent: "center", background: "rgba(0,0,0,0.4)", borderRadius: 5
               }}>
                 <div style={{
                   width: 24, height: 24, border: "3px solid #ffffff30",
@@ -3966,7 +4025,7 @@ const RetweetQuestCard = ({ retweetState, retweetCooldown, retweetReward, retwee
   const bx = {
     height: 38, display: "flex", alignItems: "center", justifyContent: "center",
     width: "100%", fontFamily: "'Jersey 25',sans-serif", fontSize: "1em",
-    textTransform: "uppercase", borderRadius: 15, cursor: "pointer",
+    textTransform: "uppercase", borderRadius: 10, cursor: "pointer",
     border: "none", color: "#fff"
   };
 
@@ -3974,18 +4033,18 @@ const RetweetQuestCard = ({ retweetState, retweetCooldown, retweetReward, retwee
     <div style={{
       background: "linear-gradient(360deg,#212936,#4e596c)",
       boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
-      borderRadius: "16px 16px 25px 25px", padding: "5px 6px 10px",
+      borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px",
       opacity: locked ? 0.6 : 1, transition: "opacity 0.2s"
     }}>
       <div style={{
         background: "url(https://meme.com/assets/images/farm/quest/quest-retweet-v2.webp) center/cover",
-        borderRadius: 14, padding: "14px 18px",
+        borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between", position: "relative", overflow: "hidden"
       }}>
         {/* Dark overlay */}
         <div style={{
-          position: "absolute", inset: 0, borderRadius: 14,
+          position: "absolute", inset: 0, borderRadius: 8,
           background: "rgba(25,31,41,0.6)", pointerEvents: "none"
         }}/>
 
@@ -4768,7 +4827,7 @@ function App() {
               ...battleExtra
             };
           }
-          if (m.st !== "OPEN") return { ...m, fp: Number(db.fee_pool) || m.fp || 0, pot: Number(db.total_pot) || m.pot || 0, wws: Number(db.winner_weight_sum) || m.wws || 0, wis: Number(db.winner_invested_sum) || m.wis || 0, yInv: si.YES || m.yInv || 0, nInv: si.NO || m.nInv || 0, ...battleExtra };
+          if (m.st !== "OPEN") return { ...m, fp: Number(db.fee_pool) || m.fp || 0, pot: Number(db.total_pot) || m.pot || 0, wws: Number(db.winner_weight_sum) || m.wws || 0, wis: Number(db.winner_invested_sum) || m.wis || 0, yInv: si.YES || m.yInv || 0, nInv: si.NO || m.nInv || 0 };
           return {
             ...m,
             mc: db.current_mc != null ? Number(db.current_mc) : m.mc,
@@ -5170,7 +5229,7 @@ function App() {
       {notification && (
         <div style={{
           position:"fixed", top:20, left:"50%", transform:"translateX(-50%)",
-          zIndex:1000, padding:"16px 24px", borderRadius:16,
+          zIndex:1000, padding:"16px 24px", borderRadius: 10,
           background: notification.won ? "linear-gradient(135deg, #22c55e, #16a34a)" : "linear-gradient(135deg, #ef4444, #dc2626)",
           boxShadow:"0 8px 32px rgba(0,0,0,0.4)",
           display:"flex", alignItems:"center", gap:12,
@@ -5214,7 +5273,7 @@ function App() {
             {[["arena", isMobile ? "Markets" : "Meme Markets"], ["memeofthemonth", isMobile ? "Arena" : "Meme Arena"]].map(([key, label]) => (
               <button key={key} onClick={() => setActiveTab(key)} style={{
                 fontFamily: "'Jersey 25',sans-serif", fontSize: isMobile ? ".65em" : ".8em",
-                padding: isMobile ? "4px 8px" : "5px 12px", borderRadius: 8,
+                padding: isMobile ? "4px 8px" : "5px 12px", borderRadius: 5,
                 border: activeTab === key ? "1px solid #71BAFF50" : "1px solid #ffffff12",
                 background: activeTab === key ? "#71BAFF20" : "transparent",
                 color: activeTab === key ? "#71BAFF" : "#ffffff50",
@@ -5233,7 +5292,7 @@ function App() {
           }}>?</button>
           <button onClick={() => setShowDeposit(true)} style={{
             display:"flex", alignItems:"center", gap: isMobile ? 6 : 10,
-            background:"#0c1018", padding: isMobile ? "6px 10px" : "8px 14px", borderRadius:12,
+            background:"#0c1018", padding: isMobile ? "6px 10px" : "8px 14px", borderRadius: 8,
             border:"1px solid #ffffff15", cursor:"pointer"
           }}>
             {!isMobile && <span style={{
@@ -5249,15 +5308,10 @@ function App() {
               color:"#fff"
             }}>DEPOSIT</span>
           </button>
-          <div onClick={() => { setShowProfile(true); loadInventory(userId.current); }} style={{
-            display:"flex", alignItems:"center", gap: isMobile ? 5 : 8, cursor:"pointer",
-            padding:"3px 10px 3px 3px", borderRadius:20,
-            background:"#ffffff0a", border:"1px solid #ffffff12",
-            transition:"background .15s, border-color .15s"
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background="#ffffff15"; e.currentTarget.style.borderColor="#ffffff25"; }}
-          onMouseLeave={e => { e.currentTarget.style.background="#ffffff0a"; e.currentTarget.style.borderColor="#ffffff12"; }}
-          >
+          <div style={{
+            display:"flex", alignItems:"center", gap: isMobile ? 5 : 8,
+            padding:"3px 10px 3px 3px"
+          }}>
             <div style={{
               width: isMobile ? 22 : 24, height: isMobile ? 22 : 24, borderRadius: "50%", overflow:"hidden",
               background:"linear-gradient(135deg,#71BAFF,#4023C3)",
@@ -5402,11 +5456,11 @@ function App() {
                 <div style={{
                   background:"linear-gradient(360deg,#212936,#4e596c)",
                   boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
-                  borderRadius:"16px 16px 25px 25px", padding:"5px 6px 10px"
+                  borderRadius:"10px 10px 16px 16px", padding:"5px 6px 10px"
                 }}>
                   <div style={{
                     background:"#191f29",
-                    borderRadius:14, padding:"14px 18px",
+                    borderRadius: 8, padding:"14px 18px",
                     display:"flex", flexDirection:"column",
                     position:"relative", overflow:"hidden"
                   }}>
@@ -5430,7 +5484,7 @@ function App() {
                             position:"relative", overflow:"hidden",
                             fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
                             background:"linear-gradient(135deg, rgba(185,242,255,0.12) 0%, rgba(100,180,220,0.08) 50%, rgba(185,242,255,0.12) 100%)",
-                            color:"#e0f7ff", padding:"3px 12px", borderRadius:8,
+                            color:"#e0f7ff", padding:"3px 12px", borderRadius: 5,
                             fontWeight:700, letterSpacing:".06em",
                             border:"1px solid rgba(185,242,255,0.25)",
                             textShadow:"0 0 8px rgba(185,242,255,0.5)",
@@ -5441,7 +5495,7 @@ function App() {
                             <span style={{
                               position:"absolute", top:0, left:"-100%", width:"100%", height:"100%",
                               background:"linear-gradient(90deg, transparent 0%, rgba(185,242,255,0.15) 50%, transparent 100%)",
-                              borderRadius:8, animation:"diamondShimmer 4s ease-in-out infinite"
+                              borderRadius: 5, animation:"diamondShimmer 4s ease-in-out infinite"
                             }}/>
                           </span>
                         )}
@@ -5458,7 +5512,7 @@ function App() {
                           return (
                             <div key={i} style={{
                               background:"linear-gradient(180deg, #1a1a24 0%, #12121a 100%)",
-                              border:"1.5px solid " + tc + "55", borderRadius:8,
+                              border:"1.5px solid " + tc + "55", borderRadius: 5,
                               overflow:"hidden", display:"flex", flexDirection:"column",
                               boxShadow:"0 0 8px " + tc + "20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)"
                             }}>
@@ -5495,7 +5549,7 @@ function App() {
                       {memeUser && (
                         <div style={{
                           marginTop:14, display:"flex", alignItems:"stretch",
-                          gap:0, width:"100%", height:32, borderRadius:8, overflow:"hidden"
+                          gap:0, width:"100%", height:32, borderRadius: 5, overflow:"hidden"
                         }}>
                           <div style={{
                             flex:1, position:"relative",
@@ -5556,7 +5610,7 @@ function App() {
 
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
-              borderRadius:25, overflow:"hidden"
+              borderRadius: 16, overflow:"hidden"
             }}>
               <div style={{
                 padding:"12px 16px",
@@ -5617,7 +5671,7 @@ function App() {
 
             <div style={{
               background:"linear-gradient(360deg,#212936,#4e596c)",
-              borderRadius:25, overflow:"hidden"
+              borderRadius: 16, overflow:"hidden"
             }}>
               <div style={{
                 padding:"12px 16px",
@@ -5673,7 +5727,7 @@ function App() {
                       visibility: showRank ? "visible" : "hidden"
                     }}>{showRank ? `#${rank}` : "#"}</span>
                     <div style={{
-                      width:26, height:26, borderRadius:13, overflow:"hidden",
+                      width:26, height:26, borderRadius: 8, overflow:"hidden",
                       background: p.isCurrentUser ? "linear-gradient(135deg,#71BAFF,#4023C3)" : "#333",
                       display:"flex", alignItems:"center", justifyContent:"center",
                       fontSize:12, fontWeight:700, flexShrink:0
@@ -5714,7 +5768,7 @@ function App() {
             {hist.length > 0 && (
               <div style={{
                 background:"linear-gradient(360deg,#212936,#4e596c)",
-                borderRadius:25, overflow:"hidden"
+                borderRadius: 16, overflow:"hidden"
               }}>
                 <div style={{
                   padding:"12px 16px",
@@ -5762,7 +5816,7 @@ function App() {
             setShowCreateKymRace(true);
           }} />
 
-          <KYMProbabilityGraph markets={mks} trendSnaps={trendSnapsRef.current} isMobile={isMobile} />
+          <KYMProbabilityGraph markets={mks} trendSnaps={trendSnapsRef.current} isMobile={isMobile} pos={pos} onSell={onSell} />
 
           <div style={{ marginBottom: 20 }}>
 
@@ -5847,286 +5901,6 @@ function App() {
         }}
       />
 
-      {showProfile && (() => {
-        const dbTierMap = { GOLD:"gold", SILVER:"purple", BRONZE:"green" };
-        const tierColors = { gold:"#ff7900", purple:"#e900d7", green:"#69b69b" };
-        const tierColors2 = { gold:"#ffcb15", purple:"#fe6aff", green:"#d4ffed" };
-        const tierOrder = { gold:0, purple:1, green:2 };
-        const inv = (holdings || []).map(h => ({
-          sym: h.coin_symbol,
-          ticker: h.coin_ticker || h.coin_name || h.coin_symbol,
-          tier: dbTierMap[h.tier] || "green",
-          img: h.coin_image,
-        })).sort((a, b) => (tierOrder[a.tier] ?? 3) - (tierOrder[b.tier] ?? 3));
-        return (<>
-          <div onClick={() => setShowProfile(false)} style={{
-            position:"fixed", inset:0, zIndex:50,
-            background:"radial-gradient(ellipse at 50% 30%, rgba(20,15,40,0.88) 0%, rgba(5,5,10,0.96) 100%)",
-            backdropFilter:"blur(12px)",
-            animation:"overlayFadeIn 0.25s ease-out"
-          }}/>
-          <div style={{
-            position:"fixed", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
-            width:"min(680px, 92vw)", maxHeight:"85vh", overflowY:"auto",
-            background:"linear-gradient(180deg, #10141e 0%, #0c1018 40%, #111827 100%)",
-            border:"1px solid rgba(113,186,255,0.12)",
-            borderRadius:20, zIndex:51, padding:0,
-            boxShadow:"0 0 60px rgba(0,0,0,0.7), 0 0 120px rgba(113,186,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
-            animation:"panelSlideIn 0.3s cubic-bezier(0.34,1.56,0.64,1)"
-          }}>
-            {/* Header */}
-            <div style={{
-              padding:"20px 24px", display:"flex", justifyContent:"space-between",
-              alignItems:"center",
-              borderBottom:"1px solid rgba(255,255,255,0.06)",
-              background:"linear-gradient(180deg, rgba(113,186,255,0.04) 0%, transparent 100%)"
-            }}>
-              <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                <div style={{
-                  width:44, height:44, borderRadius:22, overflow:"hidden",
-                  background:"linear-gradient(135deg,#71BAFF,#4023C3)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:18, fontWeight:700, flexShrink:0,
-                  boxShadow:"0 2px 8px rgba(0,0,0,0.4)",
-                  border:"none"
-                }}>
-                  {memeUser?.image
-                    ? <img src={memeUser.image} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-                    : <span>{(memeUser?.username || "G")[0].toUpperCase()}</span>
-                  }
-                </div>
-                <div>
-                  <div style={{
-                    fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.15em",
-                    textShadow:"0 0 20px rgba(255,255,255,0.1)"
-                  }}>{memeUser?.username || "Guest"}</div>
-                  <div style={{
-                    fontFamily:"'Jersey 25',sans-serif", fontSize:".78em", color:"#ffffff50"
-                  }}>
-                    <span style={gld}>{bal.toLocaleString()} MEMESCORE</span>
-                  </div>
-                </div>
-              </div>
-              <span onClick={() => setShowProfile(false)} style={{
-                cursor:"pointer", color:"#ffffff30", fontSize:"1.2em", padding:"6px 10px",
-                lineHeight:1, borderRadius:8, border:"1px solid rgba(255,255,255,0.06)",
-                background:"rgba(255,255,255,0.03)", transition:"all .15s"
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.08)"; e.currentTarget.style.color="#ffffff80"; }}
-              onMouseLeave={e => { e.currentTarget.style.background="rgba(255,255,255,0.03)"; e.currentTarget.style.color="#ffffff30"; }}
-              >✕</span>
-            </div>
-            <div style={{ padding:"20px 24px" }}>
-              {/* Combined inventory + claim card */}
-              <div style={{
-                background:"linear-gradient(360deg,#212936,#4e596c)",
-                boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
-                borderRadius:20, padding:0, overflow:"hidden"
-              }}>
-                <div style={{
-                  backgroundImage:"url(/experiments/memecoin-arena/inventory-bg.png)",
-                  backgroundSize:"110%", backgroundPosition:"center center",
-                  padding:"14px 18px",
-                  display:"flex", flexDirection:"column",
-                  position:"relative"
-                }}>
-                  {/* Dark overlay */}
-                  <div style={{
-                    position:"absolute", inset:0, borderRadius:14,
-                    background:"linear-gradient(180deg, rgba(15,20,30,0.88) 0%, rgba(15,20,30,0.78) 60%, rgba(0,0,0,0.55) 100%)",
-                    pointerEvents:"none"
-                  }}/>
-
-                  {/* Content */}
-                  <div style={{ position:"relative", zIndex:1 }}>
-                    {/* Header */}
-                    <div style={{
-                      fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.05em",
-                      textTransform:"uppercase", marginBottom:14,
-                      textShadow:"0 2px 2px rgba(0,0,0,.25),0 6px 6px rgba(0,0,0,.25)",
-                      lineHeight:1.2, display:"flex", alignItems:"center", gap:10
-                    }}>
-                      <span><span style={gld}>Memecoin</span> Inventory</span>
-                      {diamondHands > 0 && (
-                        <span style={{
-                          position:"relative", overflow:"hidden",
-                          fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
-                          background:"linear-gradient(135deg, rgba(185,242,255,0.12) 0%, rgba(100,180,220,0.08) 50%, rgba(185,242,255,0.12) 100%)",
-                          color:"#e0f7ff", padding:"3px 12px", borderRadius:8,
-                          fontWeight:700, letterSpacing:".06em",
-                          border:"1px solid rgba(185,242,255,0.25)",
-                          textShadow:"0 0 8px rgba(185,242,255,0.5)",
-                          boxShadow:"0 0 12px rgba(185,242,255,0.15), 0 0 30px rgba(185,242,255,0.08), inset 0 1px 0 rgba(255,255,255,0.1)",
-                          animation:"diamondPulse 3s ease-in-out infinite"
-                        }}>
-                          <span style={{ position:"relative", zIndex:1 }}>{"\u{1F48E}"} {diamondHands}X</span>
-                          <span style={{
-                            position:"absolute", top:0, left:"-100%", width:"100%", height:"100%",
-                            background:"linear-gradient(90deg, transparent 0%, rgba(185,242,255,0.15) 50%, transparent 100%)",
-                            borderRadius:8, animation:"diamondShimmer 4s ease-in-out infinite"
-                          }}/>
-                        </span>
-                      )}
-                    </div>
-
-                    {scanError && <div style={{
-                      fontFamily:"'Jersey 25',sans-serif", fontSize:".75em", color:"#f65e5e",
-                      marginBottom:10, textAlign:"center"
-                    }}>Scan failed: {scanError}</div>}
-
-                    {holdings === null ? (
-                      <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>Loading...</div>
-                    ) : inv.length === 0 ? (
-                      <div style={{ color:"#ffffff30", fontFamily:"'Jersey 25',sans-serif", fontSize:".8em", textAlign:"center", padding:"20px 0" }}>
-                        {scanning ? "Scanning..." : memeUser ? "Hit Claim to check your holdings" : "Log in to see holdings"}
-                      </div>
-                    ) : (
-                    <div style={{
-                      display:"grid",
-                      gridTemplateColumns:"repeat(auto-fill, minmax(60px, 1fr))",
-                      gap:8
-                    }}>
-                      {inv.map((h, i) => {
-                        const tc = tierColors[h.tier];
-                        const tc2 = tierColors2[h.tier];
-                        return (
-                          <div key={i} style={{
-                            background:"linear-gradient(180deg, #1a1a24 0%, #12121a 100%)",
-                            border:"1.5px solid " + tc + "55",
-                            borderRadius:8,
-                            overflow:"hidden",
-                            display:"flex", flexDirection:"column",
-                            boxShadow:"0 0 8px " + tc + "20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
-                            cursor:"pointer", transition:"transform .2s, box-shadow .2s, border-color .2s"
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px) scale(1.04)"; e.currentTarget.style.boxShadow="0 0 16px "+tc+"40, 0 4px 12px rgba(0,0,0,0.5)"; e.currentTarget.style.borderColor=tc+"88"; }}
-                          onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 0 8px "+tc+"20, 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor=tc+"55"; }}
-                          >
-                            <div style={{
-                              width:"100%", aspectRatio:"1", position:"relative",
-                              background:"linear-gradient(180deg, " + tc + "0d, transparent)",
-                              display:"flex", alignItems:"center", justifyContent:"center",
-                              overflow:"hidden"
-                            }}>
-                              {h.img ? <img src={h.img} alt={h.sym}
-                                style={{ width:"100%", height:"100%", objectFit:"cover" }}
-                                onError={e => { e.target.style.display="none"; }}
-                              /> : <div style={{
-                                fontFamily:"'Londrina Solid',sans-serif", fontSize:"1.3em",
-                                color:tc, opacity:.5
-                              }}>{h.sym[0]}</div>}
-                            </div>
-                            <div style={{
-                              background:"linear-gradient(180deg, " + tc + "bb, " + tc2 + "88)",
-                              padding:"3px 5px",
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              marginTop:"auto"
-                            }}>
-                              <div style={{
-                                fontFamily:"'Londrina Solid',sans-serif", fontSize:".55em",
-                                color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.6)"
-                              }}>${h.ticker}</div>
-                              <img src="https://meme.com/assets/images/farm/simple-diamond.svg" alt="" style={{
-                                width:9, height:7, filter:"drop-shadow(0 0 2px rgba(255,255,255,0.3))"
-                              }}/>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    )}
-
-                    {/* Claim / timer section */}
-                    {memeUser && (() => {
-                      const canScan = !scanning && (!lastCensusAt || Date.now() - new Date(lastCensusAt).getTime() >= CENSUS_COOLDOWN_MS);
-                      const msLeft = lastCensusAt ? Math.max(0, CENSUS_COOLDOWN_MS - (Date.now() - new Date(lastCensusAt).getTime())) : 0;
-                      const onCooldown = !canScan && !scanning && lastCensusAt;
-                      const d = Math.floor(msLeft / (24*60*60*1000));
-                      const h = Math.floor((msLeft % (24*60*60*1000)) / (60*60*1000));
-                      const m = Math.floor((msLeft % (60*60*1000)) / (60*1000));
-                      const s = Math.floor((msLeft % (60*1000)) / 1000);
-                      void claimTick;
-                      const pct = onCooldown ? Math.min(100, Math.max(0, ((Date.now() - new Date(lastCensusAt).getTime()) / CENSUS_COOLDOWN_MS) * 100)) : 100;
-                      const doScan = async () => {
-                        setScanning(true); setScanError(null);
-                        try {
-                          await runHoldingsScan(userId.current, memeUser.id, authToken);
-                          setLastCensusAt(new Date().toISOString());
-                          await loadInventory(userId.current);
-                          const { data: freshUser } = await supabase.from("labs_users").select("diamond_hands").eq("id", userId.current).single();
-                          const freshDh = freshUser?.diamond_hands || 0;
-                          setDiamondHands(freshDh);
-                          const { data: freshHoldings } = await supabase.from("labs_user_inventory").select("tier").eq("user_id", userId.current);
-                          const reward = calcHoldingsReward(freshHoldings, freshDh);
-                          if (reward > 0) {
-                            const { error: rewardErr } = await supabase.rpc('labs_claim_holdings_reward', {
-                              p_user_id: userId.current,
-                              p_reward: reward
-                            });
-                            if (rewardErr) throw new Error("Reward failed: " + rewardErr.message);
-                            setBal(b => b + reward);
-                            setClaimReward(reward);
-                            setTimeout(() => setClaimReward(0), 1800);
-                          }
-                        } catch (e) { setScanError(e.message); }
-                        setScanning(false);
-                      };
-                      return (
-                        <div style={{
-                          marginTop:14, display:"flex", alignItems:"stretch",
-                          gap:0, width:"100%", height:32, borderRadius:8, overflow:"hidden"
-                        }}>
-                          {/* Progress bar */}
-                          <div style={{
-                            flex:1, position:"relative",
-                            background:"rgba(0,0,0,0.45)",
-                            boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"
-                          }}>
-                            <div style={{
-                              position:"absolute", top:0, left:0, height:"100%",
-                              width: pct + "%",
-                              background:"linear-gradient(90deg, #71BAFF, #5a9fdf)",
-                              boxShadow:"0 0 8px rgba(113,186,255,0.3)",
-                              transition: pct < 100 ? "width 0.3s ease-out" : "none",
-                              overflow:"hidden"
-                            }}/>
-                          </div>
-                          {/* Claim / timer button */}
-                          <div onClick={canScan && !claimReward ? doScan : undefined} style={{
-                            fontFamily:"'Jersey 25',sans-serif",
-                            fontSize: claimReward > 0 ? "1.2em" : "1em",
-                            color: (claimReward > 0 || canScan) ? "#fff" : "#ffffffaa",
-                            background: claimReward > 0
-                              ? "linear-gradient(180deg, #22c55e 0%, #16a34a 100%)"
-                              : canScan
-                                ? "linear-gradient(180deg, #ffcb15 0%, #f7931a 100%)"
-                                : "linear-gradient(180deg, #f7931a99 0%, #cc750e99 100%)",
-                            padding:"0 24px",
-                            cursor: canScan && !claimReward ? "pointer" : "default",
-                            fontWeight:700, letterSpacing:".06em", textTransform:"uppercase",
-                            display:"flex", alignItems:"center", justifyContent:"center",
-                            width:"33%", flexShrink:0,
-                            boxShadow: claimReward > 0 ? "0 0 16px rgba(34,197,94,0.6)" : canScan ? "inset 0 1px 0 rgba(255,255,255,0.25)" : "none",
-                            textShadow: "0 1px 4px rgba(0,0,0,0.4)",
-                            animation: claimReward > 0 ? "claimPop .35s ease-out, claimGlow 1.8s ease-out" : "none",
-                            transition:"background .3s, color .3s, font-size .3s"
-                          }}
-                          onMouseEnter={canScan && !claimReward ? e => { e.currentTarget.style.filter="brightness(1.1)"; } : undefined}
-                          onMouseLeave={canScan && !claimReward ? e => { e.currentTarget.style.filter=""; } : undefined}
-                          >
-                            {scanning ? "SCANNING..." : claimReward > 0 ? `+${claimReward.toLocaleString()}` : canScan ? (() => { const r = calcHoldingsReward(holdings, diamondHands); return r > 0 ? `CLAIM ${r.toLocaleString()}` : "CLAIM"; })() : `${d}d ${h}h ${m}m`}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>);
-      })()}
-
       <HowToPlayModal isOpen={showHowTo} onClose={() => setShowHowTo(false)} isMobile={isMobile} activeTab={activeTab} />
 
       <DepositModal
@@ -6161,7 +5935,7 @@ function App() {
         <div onClick={() => setFlash(null)} style={{
           position:"fixed", bottom:32, left:"50%", transform:"translateX(-50%)",
           background: flash.type === "error" ? "#dc2626" : "#16a34a",
-          color:"#fff", padding:"12px 24px", borderRadius:12,
+          color:"#fff", padding:"12px 24px", borderRadius: 8,
           fontFamily:"'Jersey 25',sans-serif", fontSize:"1.1em",
           boxShadow:"0 4px 20px rgba(0,0,0,0.5)", zIndex:999, cursor:"pointer",
           animation:"fadeIn .2s ease"

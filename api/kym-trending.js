@@ -245,31 +245,32 @@ export default async function handler(req, res) {
     sources.editorials = editorialMemes.length;
     allMemes.push(...editorialMemes);
 
-    // 5. Fetch entry pages for editorial memes (resolve images + check recency)
-    // Editorial articles often reference old memes in sidebars — filter them out.
-    // Listing pages (homepage, newest, confirmed) inherently return recent memes.
-    const sixMonthsAgo = new Date(Date.now() - 180 * 86400000);
-    const editorialSlugs = new Set(editorialMemes.map(m => m.slug));
-    const needFetch = allMemes.filter(m => !m.image || editorialSlugs.has(m.slug));
-    if (needFetch.length > 0) {
-      await Promise.all(needFetch.map(async (m) => {
-        const html = await fetchPage(`https://knowyourmeme.com/memes/${m.slug}`, true);
-        if (!html) return;
-        // Resolve missing image
-        if (!m.image) {
-          const imgMatch = html.match(/https:\/\/i\.kym-cdn\.com\/entries\/icons\/(?:original|newsfeed)\/[^"'\s]+/i);
-          if (imgMatch) m.image = imgMatch[0].replace('/icons/newsfeed/', '/icons/original/');
-        }
-        // Check recency for editorial-sourced memes
-        if (editorialSlugs.has(m.slug)) {
-          const dateMatch = html.match(/"datePublished":"(\d{4}-\d{2}-\d{2})/);
-          if (dateMatch && new Date(dateMatch[1]) < sixMonthsAgo) {
+    // 5. Fetch entry pages for ALL memes — resolve images + check recency
+    // Listing pages can surface old memes (e.g. "added 2 months ago").
+    // For MOTM we only want memes from the last ~6 weeks.
+    const MAX_AGE_DAYS = 45;
+    const cutoffDate = new Date(Date.now() - MAX_AGE_DAYS * 86400000);
+    // Batch fetch in groups of 10 to avoid overwhelming KYM
+    for (let i = 0; i < allMemes.length; i += 10) {
+      const batch = allMemes.slice(i, i + 10);
+      await Promise.all(batch.map(async (m) => {
+        try {
+          const html = await fetchPage(`https://knowyourmeme.com/memes/${m.slug}`, true);
+          if (!html) return;
+          // Resolve missing image
+          if (!m.image) {
+            const imgMatch = html.match(/https:\/\/i\.kym-cdn\.com\/entries\/icons\/(?:original|newsfeed)\/[^"'\s]+/i);
+            if (imgMatch) m.image = imgMatch[0].replace('/icons/newsfeed/', '/icons/original/');
+          }
+          // Check recency — datePublished from JSON-LD
+          const dateMatch = html.match(/"datePublished"\s*:\s*"(\d{4}-\d{2}-\d{2})/);
+          if (dateMatch && new Date(dateMatch[1]) < cutoffDate) {
             m._stale = true;
           }
-        }
+        } catch (_) {}
       }));
     }
-    // Remove stale editorial memes
+    // Remove stale memes
     const freshMemes = allMemes.filter(m => !m._stale);
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=1800');

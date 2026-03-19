@@ -7,9 +7,44 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://csvegolcvwuwssoefxdh.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const DEFAULT_LIQUIDITY = 2000000;
 const MAX_TRENDING = 30;
-const MAX_AGE_DAYS = 90; // Skip memes with KYM entries older than this
+const MAX_AGE_DAYS = 45; // Skip memes with KYM entries older than ~6 weeks
+
+const STOP_WORDS = new Set(['a','an','the','of','to','is','in','for','and','or','on','at','by','it','as','be','no','my','do','so','up','if','me']);
+
+function tokenize(name) {
+  const words = name.toLowerCase()
+    .replace(/['']/g, '') // didn't → didnt
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim().split(/\s+/)
+    .filter(w => w.length > 1 && !STOP_WORDS.has(w));
+  // Expand contractions: "didnt" → "did", "doesnt" → "does", "cant" → "can", etc.
+  const expanded = [];
+  for (const w of words) {
+    const m = w.match(/^(.+?)(nt)$/);
+    if (m && m[1].length > 1) expanded.push(m[1], 'not');
+    else expanded.push(w);
+  }
+  return expanded.filter(w => !STOP_WORDS.has(w));
+}
+
+function findSimilar(newName, existingMarkets) {
+  const newTokens = new Set(tokenize(newName));
+  if (newTokens.size === 0) return null;
+  let bestMatch = null;
+  let bestCount = 0;
+  for (const m of existingMarkets) {
+    const existingTokens = new Set(tokenize(m.coin_name));
+    const overlap = [...newTokens].filter(w => existingTokens.has(w));
+    if (overlap.length >= 2 && overlap.length > bestCount) {
+      bestCount = overlap.length;
+      bestMatch = { name: m.coin_name, slug: m.kym_slug, overlap, count: overlap.length };
+    }
+  }
+  return bestMatch;
+}
 
 // Check if a meme's KYM entry is recent enough (< MAX_AGE_DAYS old)
 async function isMemeRecent(slug) {
@@ -72,8 +107,26 @@ export default async function handler(req, res) {
         let created = 0;
         let skipped = 0;
         let tooOld = 0;
+        let dupWarnings = [];
+
+        // Fetch existing open KYMRACE markets for similarity check
+        let existingMarkets = [];
+        try {
+          const mktsRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/labs_markets?market_type=eq.KYMRACE&status=eq.OPEN&season_id=eq.${seasonId}&select=coin_name,kym_slug`,
+            { headers }
+          );
+          if (mktsRes.ok) existingMarkets = await mktsRes.json();
+        } catch {}
 
         for (const meme of topMemes) {
+          // Check for similar existing market (different slug) before creating
+          const similar = findSimilar(meme.name, existingMarkets.filter(m => m.kym_slug !== meme.slug));
+          if (similar) {
+            dupWarnings.push({ new: meme.name, newSlug: meme.slug, existing: similar.name, existingSlug: similar.slug, overlap: similar.overlap });
+            continue;
+          }
+
           // Skip memes with KYM entries older than MAX_AGE_DAYS
           const recent = await isMemeRecent(meme.slug);
           if (!recent) { tooOld++; continue; }
@@ -96,7 +149,23 @@ export default async function handler(req, res) {
             skipped++; // Duplicate or validation error — expected
           }
         }
-        log.push({ step: 'create_markets', created, skipped, tooOld, totalTrending: trendData.memes.length });
+        // Notify Discord about potential duplicates
+        if (dupWarnings.length > 0 && DISCORD_WEBHOOK_URL) {
+          const lines = dupWarnings.map(d =>
+            `• **"${d.new}"** (\`${d.newSlug}\`) looks like **"${d.existing}"** (\`${d.existingSlug}\`) — overlap: ${d.overlap.join(', ')}`
+          ).join('\n');
+          try {
+            await fetch(DISCORD_WEBHOOK_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                content: `⚠️ **KYM Indexer — ${dupWarnings.length} potential duplicate(s) skipped**\n\n${lines}`
+              })
+            });
+          } catch {}
+        }
+
+        log.push({ step: 'create_markets', created, skipped, tooOld, dupSkipped: dupWarnings.length, totalTrending: trendData.memes.length });
       } else {
         log.push({ step: 'skip', reason: 'no_trending_data' });
       }
