@@ -951,7 +951,7 @@ const HowToPlayModal = ({ isOpen, onClose, isMobile, activeTab }) => {
     display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
   };
   const panelBase = {
-    background:"linear-gradient(180deg,#1a2332,#0c1018)",
+    background:"rgba(0,0,0,0.35)", backdropFilter:"blur(16px) saturate(130%)", WebkitBackdropFilter:"blur(16px) saturate(130%)",
     borderRadius: isMobile ? "12px 12px 0 0" : 12,
     padding: isMobile ? "24px 16px 32px" : 32,
     width: isMobile ? "100%" : "auto",
@@ -1061,7 +1061,7 @@ const DepositModal = ({ isOpen, onClose, onDeposit, memeUser, memescore, labsBal
     display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:100
   };
   const panelBase = {
-    background:"linear-gradient(180deg,#1a2332,#0c1018)",
+    background:"rgba(0,0,0,0.35)", backdropFilter:"blur(16px) saturate(130%)", WebkitBackdropFilter:"blur(16px) saturate(130%)",
     borderRadius: isMobile ? "12px 12px 0 0" : 12,
     padding: isMobile ? "24px 16px 32px" : 32,
     width: isMobile ? "100%" : "auto",
@@ -1263,12 +1263,14 @@ const Card = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMobile, 
 
   return (
     <div style={{
-      background:"linear-gradient(360deg,#212936,#4e596c)",
-      boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background:"rgba(0,0,0,0.3)",
+      backdropFilter:"blur(12px) saturate(130%)", WebkitBackdropFilter:"blur(12px) saturate(130%)",
+      border:"1px solid rgba(255,255,255,0.1)",
+      boxShadow:"0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius:"10px 10px 16px 16px", padding:"5px 6px 10px"
     }}>
       <div style={{
-        background:"#191f29", borderRadius: 8, padding:"14px 18px",
+        background:"rgba(12,16,24,0.5)", borderRadius: 8, padding:"14px 18px",
         minHeight:192, display:"flex", flexDirection:"column",
         justifyContent:"space-between"
       }}>
@@ -1634,12 +1636,14 @@ const CustomPredictionCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, is
 
   return (
     <div style={{
-      background:"linear-gradient(360deg,#212936,#4e596c)",
-      boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background:"rgba(0,0,0,0.3)",
+      backdropFilter:"blur(12px) saturate(130%)", WebkitBackdropFilter:"blur(12px) saturate(130%)",
+      border:"1px solid rgba(255,255,255,0.1)",
+      boxShadow:"0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius:"10px 10px 16px 16px", padding:"5px 6px 10px"
     }}>
       <div style={{
-        background:"#191f29", borderRadius: 8, padding:"14px 18px",
+        background:"rgba(12,16,24,0.5)", borderRadius: 8, padding:"14px 18px",
         minHeight:192, display:"flex", flexDirection:"column",
         justifyContent:"space-between"
       }}>
@@ -1982,12 +1986,19 @@ const TrendDualChart = ({ snapshots, m, aLeads, bLeads, colorOverride }) => {
 
   const colorA = colorOverride?.a || "#64B5F6", colorB = colorOverride?.b || "#a78bfa";
 
+  // Draw the leader's path last so it renders on top
+  const pathA = [
+    React.createElement('path', { key: 'lA', d: toPath(ptsA), fill: 'none', stroke: colorA, strokeWidth: aLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+    React.createElement('circle', { key: 'cA', cx: W - PAD, cy: endY(ptsA), r: 2.5, fill: colorA })
+  ];
+  const pathB = [
+    React.createElement('path', { key: 'lB', d: toPath(ptsB), fill: 'none', stroke: colorB, strokeWidth: bLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+    React.createElement('circle', { key: 'cB', cx: W - PAD, cy: endY(ptsB), r: 2.5, fill: colorB })
+  ];
+
   return React.createElement('div', { style: { width: '100%' } },
     React.createElement('svg', { width: '100%', viewBox: '0 0 ' + W + ' ' + H, style: { overflow: 'visible', display: 'block' } },
-      React.createElement('path', { d: toPath(ptsA), fill: 'none', stroke: colorA, strokeWidth: aLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
-      React.createElement('path', { d: toPath(ptsB), fill: 'none', stroke: colorB, strokeWidth: bLeads ? 2.2 : 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }),
-      React.createElement('circle', { cx: W - PAD, cy: endY(ptsA), r: 2.5, fill: colorA }),
-      React.createElement('circle', { cx: W - PAD, cy: endY(ptsB), r: 2.5, fill: colorB })
+      ...(aLeads ? [...pathB, ...pathA] : [...pathA, ...pathB])
     )
   );
 };
@@ -2252,12 +2263,14 @@ const BattleCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, streak, isMo
 
   return (
     <div style={{
-      background: "linear-gradient(360deg,#212936,#4e596c)",
-      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background: "rgba(0,0,0,0.3)",
+      backdropFilter: "blur(12px) saturate(130%)", WebkitBackdropFilter: "blur(12px) saturate(130%)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px"
     }}>
       <div style={{
-        background: "#191f29", borderRadius: 8, padding: "14px 18px",
+        background: "rgba(12,16,24,0.5)", borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
@@ -2693,14 +2706,14 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
   return (
     <div style={isKymRace ? {
       borderRadius: 12, overflow: "hidden",
-      background: "linear-gradient(135deg, rgba(20,30,50,0.8), rgba(12,16,24,0.95))",
-      backdropFilter: "blur(20px) saturate(180%)",
-      WebkitBackdropFilter: "blur(20px) saturate(180%)",
+      background: "#222a3a",
       border: "1px solid rgba(255,255,255,0.08)",
       boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)"
     } : {
-      background: "linear-gradient(360deg,#1a2636,#2a4060)",
-      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background: "rgba(0,0,0,0.3)",
+      backdropFilter: "blur(12px) saturate(130%)", WebkitBackdropFilter: "blur(12px) saturate(130%)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px"
     }}>
       {/* KYM Hero Image */}
@@ -2746,7 +2759,7 @@ const MemeMarketCard = ({ m, bal, pos, players, onBuy, onSell, onClaim, isMobile
         display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       } : {
-        background: "#191f29", borderRadius: 8, padding: "14px 18px",
+        background: "rgba(12,16,24,0.5)", borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
@@ -3192,7 +3205,7 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
     display: "flex", alignItems: "center", justifyContent: "center", padding: 16
   };
   const modalStyle = {
-    background: "#191f29", borderRadius: 12, padding: "24px 28px",
+    background: "rgba(12,16,24,0.5)", borderRadius: 12, padding: "24px 28px",
     maxWidth: 440, width: "100%", maxHeight: "85vh", overflow: "auto",
     boxShadow: "0 8px 48px rgba(0,0,0,0.6)", border: "1px solid #ffffff10"
   };
@@ -3251,7 +3264,7 @@ const KYMCreateModal = ({ show, onClose, bal, onCreated, memeUser, onLoginRequir
 
         {wizStep === 2 && (
           <div>
-            <div style={{ background: "#0c1018", borderRadius: 8, padding: "14px 16px", marginBottom: 12, border: "1px solid #ffffff10" }}>
+            <div style={{ background: "rgba(12,16,24,0.5)", borderRadius: 8, padding: "14px 16px", marginBottom: 12, border: "1px solid rgba(255,255,255,0.1)" }}>
               <div style={{ fontFamily: "'Londrina Solid',sans-serif", fontSize: "1.1em", marginBottom: 4 }}>{memeName}</div>
               <div style={{ fontFamily: "'Jersey 25',sans-serif", fontSize: ".75em", color: "#ffffff40" }}>
                 knowyourmeme.com/memes/{kymSlug}
@@ -3410,12 +3423,14 @@ const PredictionCard = ({ pm, memescore, authToken, memeUser, onLoginRequired, s
 
   return (
     <div style={{
-      background: "linear-gradient(360deg,#212936,#4e596c)",
-      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background: "rgba(0,0,0,0.3)",
+      backdropFilter: "blur(12px) saturate(130%)", WebkitBackdropFilter: "blur(12px) saturate(130%)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px"
     }}>
       <div style={{
-        background: "#191f29", borderRadius: 8, padding: "14px 18px",
+        background: "rgba(12,16,24,0.5)", borderRadius: 8, padding: "14px 18px",
         minHeight: 192, display: "flex", flexDirection: "column",
         justifyContent: "space-between"
       }}>
@@ -3743,7 +3758,7 @@ const TreasureChestDialog = ({ questId, authToken, onClose, isMobile }) => {
         {/* Dark overlay */}
         <div style={{
           position: "absolute", inset: 0,
-          background: "rgba(12,16,24,0.55)", pointerEvents: "none"
+          background: "rgba(12,16,24,0.5)", pointerEvents: "none"
         }}/>
 
         <div style={{ position: "relative", zIndex: 1, padding: isMobile ? "28px 20px 32px" : "32px 32px 28px" }}>
@@ -3903,8 +3918,10 @@ const TreasureChestCard = ({ chestState, chestCooldown, chestReward, chestQuest,
 
   return (
     <div style={{
-      background: "linear-gradient(360deg,#212936,#4e596c)",
-      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background: "rgba(0,0,0,0.3)",
+      backdropFilter: "blur(12px) saturate(130%)", WebkitBackdropFilter: "blur(12px) saturate(130%)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px",
       opacity: locked ? 0.6 : 1, transition: "opacity 0.2s"
     }}>
@@ -3917,7 +3934,7 @@ const TreasureChestCard = ({ chestState, chestCooldown, chestReward, chestQuest,
         {/* Dark overlay */}
         <div style={{
           position: "absolute", inset: 0, borderRadius: 8,
-          background: "rgba(25,31,41,0.82)", pointerEvents: "none"
+          background: "rgba(25,31,41,0.65)", pointerEvents: "none"
         }}/>
 
         {/* Content on top of overlay */}
@@ -4031,8 +4048,10 @@ const RetweetQuestCard = ({ retweetState, retweetCooldown, retweetReward, retwee
 
   return (
     <div style={{
-      background: "linear-gradient(360deg,#212936,#4e596c)",
-      boxShadow: "0 4px 44px #ffffff12,0 4px 12px #000000b8",
+      background: "rgba(0,0,0,0.3)",
+      backdropFilter: "blur(12px) saturate(130%)", WebkitBackdropFilter: "blur(12px) saturate(130%)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
       borderRadius: "10px 10px 16px 16px", padding: "5px 6px 10px",
       opacity: locked ? 0.6 : 1, transition: "opacity 0.2s"
     }}>
@@ -4827,7 +4846,13 @@ function App() {
               ...battleExtra
             };
           }
-          if (m.st !== "OPEN") return { ...m, fp: Number(db.fee_pool) || m.fp || 0, pot: Number(db.total_pot) || m.pot || 0, wws: Number(db.winner_weight_sum) || m.wws || 0, wis: Number(db.winner_invested_sum) || m.wis || 0, yInv: si.YES || m.yInv || 0, nInv: si.NO || m.nInv || 0 };
+          if (m.st !== "OPEN") {
+            // Resolved: freeze mc/mcB at resolution values, but keep startMcB for chart baseline
+            const resolvedExtra = (m.type === "BATTLE" || m.type === "TRENDS") ? {
+              startMcB: db.start_mc_b != null ? Number(db.start_mc_b) : m.startMcB
+            } : {};
+            return { ...m, fp: Number(db.fee_pool) || m.fp || 0, pot: Number(db.total_pot) || m.pot || 0, wws: Number(db.winner_weight_sum) || m.wws || 0, wis: Number(db.winner_invested_sum) || m.wis || 0, yInv: si.YES || m.yInv || 0, nInv: si.NO || m.nInv || 0, ...resolvedExtra };
+          }
           return {
             ...m,
             mc: db.current_mc != null ? Number(db.current_mc) : m.mc,
@@ -5109,68 +5134,42 @@ function App() {
     const m = mks.find(x => x.id===mid);
     if (!pp || !m || m.st!=="RES") return;
 
-    // Use atomic labs_claim RPC
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.rpc('labs_claim', {
-          p_user_id: userId.current,
-          p_market_id: mid
-        });
-        if (!error && data?.success) {
-          setBal(data.new_balance);
-          setWins(data.new_wins);
-          setLosses(data.new_losses);
-          setStreak(data.new_streak);
-          setBestStreak(data.new_best_streak);
-          setMyProfit(mp => mp + data.pnl);
-          setPos(p => ({ ...p, [mid]: { ...p[mid], claimed: true } }));
-          setHist(h => [...h, {
-            sym: m.c.sym, side: pp.side, type: "CLAIM",
-            result: m.res, amount: data.total_payout, pnl: data.pnl
-          }]);
-          // Update fee pool locally
-          if (data.fee_bonus > 0) {
-            setMks(p => p.map(mk => mk.id !== mid ? mk : { ...mk, fp: Math.max(0, (mk.fp || 0) - data.fee_bonus) }));
-          }
-          setTimeout(refreshLeaderboard, 500);
-          return;
-        }
-      } catch (e) {
-        console.log("labs_claim RPC failed, using fallback:", e);
-      }
-    }
-
-    // Fallback: manual claim (no fee bonus)
-    const won = m.res===pp.side;
-    // POOL-SPLIT-V1: const poolRw = won && m.wws > 0 ? pp.inv + Math.round(pp.sh / m.wws * (m.pot - m.wis)) : 0;
-    // POOL-SPLIT-V1: const rw = won ? Math.max(poolRw, pp.sh) : 0;
-    const rw = won ? pp.sh : 0;
-    const pnl = rw - pp.inv;
-
-    setBal(b => b+rw);
-    setPos(p => ({ ...p, [mid]:{ ...p[mid], claimed:true }}));
-    setHist(h => [...h, { sym:m.c.sym, side:pp.side, type:"CLAIM", result:m.res, amount:rw, pnl }]);
-
-    if (won) {
-      setWins(w => w + 1);
-      setStreak(s => {
-        const newStreak = s + 1;
-        setBestStreak(bs => Math.max(bs, newStreak));
-        return newStreak;
+    // Atomic claim via RPC — no fallback (prevents multi-tab double-claim)
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.rpc('labs_claim', {
+        p_user_id: userId.current,
+        p_market_id: mid
       });
-    } else {
-      setLosses(l => l + 1);
-      setStreak(0);
-    }
-
-    syncPositionToDb(userId.current, mid, null);
-    recordTradeInDb(userId.current, mid, m.c.sym, pp.side, pp.sh, rw, 'CLAIM', m.res, pnl);
-    if (supabase && rw > 0) {
-      await supabase.rpc('labs_adjust_balance', { p_user_id: userId.current, p_delta: rw });
-    }
-    if (supabase) {
-      await supabase.rpc('labs_adjust_profit', { p_user_id: userId.current, p_delta: pnl });
+      if (error) {
+        console.warn("labs_claim RPC error:", error);
+        return;
+      }
+      if (!data?.success) {
+        // Already claimed in another tab, or position deleted — sync state
+        console.warn("labs_claim rejected:", data?.error);
+        if (data?.error === 'no_position') {
+          setPos(p => ({ ...p, [mid]: { ...p[mid], claimed: true } }));
+        }
+        return;
+      }
+      setBal(data.new_balance);
+      setWins(data.new_wins);
+      setLosses(data.new_losses);
+      setStreak(data.new_streak);
+      setBestStreak(data.new_best_streak);
+      setMyProfit(mp => mp + data.pnl);
+      setPos(p => ({ ...p, [mid]: { ...p[mid], claimed: true } }));
+      setHist(h => [...h, {
+        sym: m.c.sym, side: pp.side, type: "CLAIM",
+        result: m.res, amount: data.total_payout, pnl: data.pnl
+      }]);
+      if (data.fee_bonus > 0) {
+        setMks(p => p.map(mk => mk.id !== mid ? mk : { ...mk, fp: Math.max(0, (mk.fp || 0) - data.fee_bonus) }));
+      }
       setTimeout(refreshLeaderboard, 500);
+    } catch (e) {
+      console.warn("labs_claim RPC exception:", e);
     }
   }, [pos, mks, memeUser, refreshLeaderboard]);
 
@@ -5208,7 +5207,7 @@ function App() {
   if (loading) {
     return (
       <div style={{
-        minHeight:"100vh", background:"#0c1018", color:"#fff",
+        minHeight:"100vh", background:"transparent", color:"#fff",
         display:"flex", alignItems:"center", justifyContent:"center",
         fontFamily:"'Jersey 25',sans-serif", fontSize:"1.5em"
       }}>
@@ -5219,7 +5218,7 @@ function App() {
 
   return (
     <div style={{
-      minHeight:"100vh", background:"#0c1018", color:"#fff",
+      minHeight:"100vh", background: activeTab === "memeofthemonth" ? "#0c1018" : "transparent", color:"#fff",
       fontFamily:"'Mulish',sans-serif",
       zoom: isMobile ? undefined : "150%"
     }}>
@@ -5260,7 +5259,7 @@ function App() {
         padding: isMobile ? "10px 12px" : "12px 24px",
         borderBottom:"1px solid #ffffff0d",
         display:"flex", justifyContent:"space-between", alignItems:"center",
-        background:"#0f1620", position:"sticky", top:0, zIndex:10,
+        background:"rgba(0,0,0,0.35)", backdropFilter:"blur(16px) saturate(130%)", WebkitBackdropFilter:"blur(16px) saturate(130%)", position:"sticky", top:0, zIndex:10,
         gap: isMobile ? 8 : 16
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 16, flexShrink: 0 }}>
@@ -5285,14 +5284,14 @@ function App() {
         <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button onClick={() => setShowHowTo(true)} style={{
             width:28, height:28, borderRadius:"50%", border:"1px solid #ffffff20",
-            background:"#0c1018", color:"#94a3b8", cursor:"pointer",
+            background:"rgba(12,16,24,0.5)", color:"#94a3b8", cursor:"pointer",
             fontFamily:"'Jersey 25',sans-serif", fontSize:".85em",
             display:"flex", alignItems:"center", justifyContent:"center",
             flexShrink:0
           }}>?</button>
           <button onClick={() => setShowDeposit(true)} style={{
             display:"flex", alignItems:"center", gap: isMobile ? 6 : 10,
-            background:"#0c1018", padding: isMobile ? "6px 10px" : "8px 14px", borderRadius: 8,
+            background:"rgba(12,16,24,0.5)", padding: isMobile ? "6px 10px" : "8px 14px", borderRadius: 8,
             border:"1px solid #ffffff15", cursor:"pointer"
           }}>
             {!isMobile && <span style={{
@@ -5454,22 +5453,17 @@ function App() {
               };
               return (
                 <div style={{
-                  background:"linear-gradient(360deg,#212936,#4e596c)",
-                  boxShadow:"0 4px 44px #ffffff12,0 4px 12px #000000b8",
+                  background:"rgba(0,0,0,0.3)", backdropFilter:"blur(12px) saturate(130%)",
+                  border:"1px solid rgba(255,255,255,0.1)",
+                  boxShadow:"0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
                   borderRadius:"10px 10px 16px 16px", padding:"5px 6px 10px"
                 }}>
                   <div style={{
-                    background:"#191f29",
+                    background:"rgba(12,16,24,0.5)",
                     borderRadius: 8, padding:"14px 18px",
                     display:"flex", flexDirection:"column",
                     position:"relative", overflow:"hidden"
                   }}>
-                    {/* Dark overlay */}
-                    <div style={{
-                      position:"absolute", inset:0,
-                      background:"linear-gradient(180deg, rgba(15,20,30,0.88) 0%, rgba(15,20,30,0.78) 60%, rgba(0,0,0,0.55) 100%)",
-                      pointerEvents:"none"
-                    }}/>
                     <div style={{ position:"relative", zIndex:1 }}>
                       {/* Header */}
                       <div style={{
@@ -5553,7 +5547,7 @@ function App() {
                         }}>
                           <div style={{
                             flex:1, position:"relative",
-                            background:"rgba(0,0,0,0.45)",
+                            background:"rgba(0,0,0,0.3)",
                             boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"
                           }}>
                             <div style={{
@@ -5609,13 +5603,15 @@ function App() {
             )}
 
             <div style={{
-              background:"linear-gradient(360deg,#212936,#4e596c)",
+              background:"rgba(0,0,0,0.3)", backdropFilter:"blur(12px) saturate(130%)",
+              border:"1px solid rgba(255,255,255,0.1)",
+              boxShadow:"0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
               borderRadius: 16, overflow:"hidden"
             }}>
               <div style={{
                 padding:"12px 16px",
                 fontFamily:"'Londrina Solid',sans-serif",
-                textTransform:"uppercase", background:"#191f29",
+                textTransform:"uppercase", background:"rgba(12,16,24,0.5)",
                 borderBottom:"1px solid #ffffff0d",
                 display:"flex", alignItems:"center"
               }}>
@@ -5632,7 +5628,7 @@ function App() {
                 return (
                 <div key={m.id} style={{
                   display:"flex", alignItems:"center", gap:10,
-                  padding:"10px 16px", background:"#191f29",
+                  padding:"10px 16px", background:"rgba(12,16,24,0.5)",
                   borderBottom:"1px solid #ffffff08"
                 }}>
                   <span style={{
@@ -5670,13 +5666,15 @@ function App() {
             </div>
 
             <div style={{
-              background:"linear-gradient(360deg,#212936,#4e596c)",
+              background:"rgba(0,0,0,0.3)", backdropFilter:"blur(12px) saturate(130%)",
+              border:"1px solid rgba(255,255,255,0.1)",
+              boxShadow:"0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
               borderRadius: 16, overflow:"hidden"
             }}>
               <div style={{
                 padding:"12px 16px",
                 fontFamily:"'Londrina Solid',sans-serif",
-                textTransform:"uppercase", background:"#191f29",
+                textTransform:"uppercase", background:"rgba(12,16,24,0.5)",
                 borderBottom:"1px solid #ffffff0d"
               }}>TOP GAINS</div>
               {(() => {
@@ -5718,7 +5716,7 @@ function App() {
                 const renderRow = (p, rank, showRank = true, compact = false) => (
                   <div key={p.id || rank} style={{
                     display:"flex", alignItems:"center", gap:10,
-                    padding: compact ? "5px 16px 10px" : "10px 16px", background:"#191f29",
+                    padding: compact ? "5px 16px 10px" : "10px 16px", background:"rgba(12,16,24,0.5)",
                     borderBottom:"1px solid #ffffff08"
                   }}>
                     <span style={{
@@ -5755,7 +5753,7 @@ function App() {
                   {top5.map((p, i) => renderRow(p, i + 1))}
                   {!playerInTop5 && (<>
                     <div style={{
-                      padding:"0 16px", background:"#191f29",
+                      padding:"0 16px", background:"rgba(12,16,24,0.5)",
                       textAlign:"center", fontFamily:"'Jersey 25',sans-serif",
                       fontSize:".7em", color:"#ffffff30", letterSpacing:4
                     }}>...</div>
@@ -5767,13 +5765,15 @@ function App() {
 
             {hist.length > 0 && (
               <div style={{
-                background:"linear-gradient(360deg,#212936,#4e596c)",
+                background:"rgba(0,0,0,0.3)", backdropFilter:"blur(12px) saturate(130%)",
+                border:"1px solid rgba(255,255,255,0.1)",
+                boxShadow:"0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(0,174,255,0.06)",
                 borderRadius: 16, overflow:"hidden"
               }}>
                 <div style={{
                   padding:"12px 16px",
                   fontFamily:"'Londrina Solid',sans-serif",
-                  textTransform:"uppercase", background:"#191f29",
+                  textTransform:"uppercase", background:"rgba(12,16,24,0.5)",
                   borderBottom:"1px solid #ffffff0d"
                 }}>YOUR HISTORY</div>
                 {hist.slice(-5).reverse().map((h,i) => {
@@ -5790,7 +5790,7 @@ function App() {
                   return (
                     <div key={i} style={{
                       display:"flex", justifyContent:"space-between",
-                      padding:"10px 16px", background:"#191f29",
+                      padding:"10px 16px", background:"rgba(12,16,24,0.5)",
                       borderBottom:"1px solid #ffffff08"
                     }}>
                       <span style={{
