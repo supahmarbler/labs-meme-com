@@ -1,6 +1,4 @@
 {
-  "buildCommand": "",
-  "outputDirectory": ".",
   "rewrites": [
     { "source": "/memeofthemonth", "destination": "/experiments/memecoin-arena/" }
   ],

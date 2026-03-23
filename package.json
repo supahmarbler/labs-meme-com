@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "npx babel experiments/memecoin-arena/app.jsx -o experiments/memecoin-arena/app.js"
+    "compile": "npx babel experiments/memecoin-arena/app.jsx -o experiments/memecoin-arena/app.js"
   },
   "devDependencies": {
     "@babel/cli": "^7.24.0",
