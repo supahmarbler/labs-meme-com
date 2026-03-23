@@ -9,6 +9,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="https://meme.com/assets/images/fi_192x192.png"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -97,8 +98,8 @@
 </head>
 <body>
   <div id="root"></div>
-  <script src="/experiments/memecoin-arena/app.js"></script>
-  <script>
+  <script type="text/babel" src="/experiments/memecoin-arena/app.jsx"></script>
+  <script type="text/babel">
     ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
   </script>
 </body>
