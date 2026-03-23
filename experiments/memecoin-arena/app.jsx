@@ -1,3 +1,4 @@
+;(function() {
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // Mobile detection hook
@@ -5947,3 +5948,5 @@ function App() {
     </div>
   );
 }
+window.App = App;
+})();
